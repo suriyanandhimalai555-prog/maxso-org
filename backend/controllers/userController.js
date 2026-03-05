@@ -73,7 +73,19 @@ const signupUser = async (req, res, next) => {
     const user = result.rows[0];
     const token = createToken(user.id);
 
-    res.status(200).json({ token, email, name, role: user.role, referral_code });
+    res.status(200).json({
+      token,
+      email,
+      name,
+      role: user.role,
+      referral_code,
+      phone_number: null,
+      wallet_address: null,
+      wallet_balance: 0,
+      country: null,
+      created_at: new Date().toISOString(),
+      referral_count: 0
+    });
   } catch (error) {
     res.status(400);
     next(error);
@@ -97,7 +109,20 @@ const loginUser = async (req, res, next) => {
     }
 
     const token = createToken(user.id);
-    res.status(200).json({ token, email: user.email, name: user.name, role: user.role, referral_code: user.referral_code });
+    console.log(`[DEBUG] Login success for user: ${user.email}, balance: ${user.wallet_balance}`);
+    res.status(200).json({
+      token,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      referral_code: user.referral_code,
+      phone_number: user.phone_number,
+      wallet_address: user.wallet_address,
+      wallet_balance: user.wallet_balance,
+      country: user.country,
+      created_at: user.created_at,
+      referral_count: user.referral_count
+    });
   } catch (error) {
     res.status(400);
     next(error);
@@ -223,7 +248,20 @@ const loginAsUser = async (req, res, next) => {
     // Create a new token for the target user to simulate their session
     const token = createToken(user.id);
 
-    res.status(200).json({ token, email: user.email, name: user.name, role: user.role, referral_code: user.referral_code, message: 'Impersonation active' });
+    res.status(200).json({
+      token,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      referral_code: user.referral_code,
+      phone_number: user.phone_number,
+      wallet_address: user.wallet_address,
+      wallet_balance: user.wallet_balance,
+      country: user.country,
+      created_at: user.created_at,
+      referral_count: user.referral_count,
+      message: 'Impersonation active'
+    });
   } catch (error) {
     res.status(400);
     next(error);

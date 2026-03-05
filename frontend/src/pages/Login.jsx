@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import { loginUser } from '../features/authSlice'
+import { loginUser, verifyUser } from '../features/authSlice'
 import styles from '../styles'
 const Login = () => {
   const [countryCode, setCountryCode] = useState('+91')
@@ -26,7 +26,11 @@ const Login = () => {
     // If identifier is just digits, prepend the selected country code
     const email = isPhoneNumber(identifier) ? `${countryCode}${identifier}` : identifier;
 
-    await dispatch(loginUser({ email, password }))
+    const resultAction = await dispatch(loginUser({ email, password }))
+    if (loginUser.fulfilled.match(resultAction)) {
+      // Refresh user data from /api/user/me to ensure full profile & balance
+      dispatch(verifyUser());
+    }
   }
 
   return (
@@ -40,22 +44,22 @@ const Login = () => {
         <div className="space-y-4">
           <div>
             <label className={styles.label}>Email or Phone Number</label>
-            <div className="flex gap-2">
+            <div className={`flex rounded-lg overflow-hidden bg-[#1a1a1a] focus-within:ring-2 focus-within:ring-red-500/50 transition-all border ${error ? 'border-red-500' : 'border-[#333333] focus-within:border-red-500'}`}>
               {isPhoneNumber(identifier) && identifier.length > 0 && (
                 <select
-                  className={`${styles.inputBase} w-1/3 bg-slate-800 text-slate-200 border-slate-700`}
+                  className={`w-[120px] px-3 py-2 bg-transparent text-white border-r outline-none cursor-pointer hover:bg-[#222222] ${error ? 'border-red-500' : 'border-[#333333]'}`}
                   value={countryCode}
                   onChange={(e) => setCountryCode(e.target.value)}
                 >
                   {countryCodes.map(({ code, country }) => (
-                    <option key={code} value={code}>
+                    <option key={code} value={code} className="bg-[#1a1a1a]">
                       {country}
                     </option>
                   ))}
                 </select>
               )}
               <input
-                className={`${styles.inputBase} ${error ? styles.inputError : styles.inputNormal} flex-1`}
+                className={`w-full px-4 py-2 bg-transparent text-white outline-none placeholder-gray-600 ${error ? 'text-red-500' : ''}`}
                 type="text"
                 onChange={(e) => setIdentifier(e.target.value)}
                 value={identifier}
