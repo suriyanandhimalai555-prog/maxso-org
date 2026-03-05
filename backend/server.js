@@ -17,7 +17,9 @@ app.use(cors({
     'http://localhost:5174',
     'http://localhost:5175',
     'https://maxso-org.onrender.com',
-    'https://maxso-org.vercel.app'
+    'https://maxso-org.vercel.app',
+    'https://amacso.org',
+    'https://www.amacso.org'
   ],
   credentials: true
 }));
