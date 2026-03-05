@@ -81,11 +81,15 @@ const signupUser = async (req, res, next) => {
 };
 
 const loginUser = async (req, res, next) => {
+  // 'email' from req.body can act as either email or phone number
   const { email, password } = req.body;
   try {
     if (!email || !password) throw Error('All fields must be filled');
 
-    const result = await db.query('SELECT * FROM "User" WHERE email = $1', [email]);
+    const result = await db.query(
+      'SELECT * FROM "User" WHERE email = $1 OR phone_number = $1',
+      [email]
+    );
     const user = result.rows[0];
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
