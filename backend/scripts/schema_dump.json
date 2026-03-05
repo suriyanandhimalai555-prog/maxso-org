@@ -1,0 +1,182 @@
+{
+  "schema": [
+    {
+      "table_name": "LevelConfig",
+      "column_name": "id",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "LevelConfig",
+      "column_name": "level",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "LevelConfig",
+      "column_name": "percentage",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "LevelConfig",
+      "column_name": "required_volume",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "LevelConfig",
+      "column_name": "status",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "LevelConfig",
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Referral",
+      "column_name": "id",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Referral",
+      "column_name": "referrer_code",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Referral",
+      "column_name": "referred_code",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Referral",
+      "column_name": "level",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Referral",
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Transaction",
+      "column_name": "id",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Transaction",
+      "column_name": "user_id",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Transaction",
+      "column_name": "type",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "Transaction",
+      "column_name": "amount",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "Transaction",
+      "column_name": "status",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "Transaction",
+      "column_name": "reference_user_id",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Transaction",
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "User",
+      "column_name": "id",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "User",
+      "column_name": "email",
+      "data_type": "text"
+    },
+    {
+      "table_name": "User",
+      "column_name": "password",
+      "data_type": "text"
+    },
+    {
+      "table_name": "User",
+      "column_name": "referral_code",
+      "data_type": "text"
+    },
+    {
+      "table_name": "User",
+      "column_name": "referred_by",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "User",
+      "column_name": "referral_count",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "User",
+      "column_name": "name",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "User",
+      "column_name": "phone_number",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "User",
+      "column_name": "wallet_address",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "User",
+      "column_name": "status",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "User",
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "User",
+      "column_name": "role",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "User",
+      "column_name": "country",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "User",
+      "column_name": "wallet_balance",
+      "data_type": "numeric"
+    }
+  ],
+  "levelConfigs": [
+    {
+      "id": 1,
+      "level": 1,
+      "percentage": "2.00",
+      "required_volume": "250.00",
+      "status": "active",
+      "created_at": "2026-02-28T11:15:04.112Z"
+    },
+    {
+      "id": 2,
+      "level": 2,
+      "percentage": "23.00",
+      "required_volume": "9000.00",
+      "status": "active",
+      "created_at": "2026-02-28T12:36:47.777Z"
+    }
+  ]
+}
