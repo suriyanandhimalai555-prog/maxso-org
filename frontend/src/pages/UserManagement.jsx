@@ -177,8 +177,9 @@ const UserManagement = () => {
             if (response.ok) {
                 const data = await response.json();
                 if (data.token) localStorage.setItem('token', data.token);
-                dispatch(verifyUser());
-                window.location.href = '/';
+                // Await verification to update Redux state, then soft redirect
+                await dispatch(verifyUser());
+                navigate('/');
             } else {
                 const data = await response.json();
                 alert(data.error || 'Failed to login as user');
@@ -333,35 +334,55 @@ const UserManagement = () => {
                                     </td>
                                     <td className={styles.umTd}>{u.created_at ? new Date(u.created_at).toLocaleString() : '18/2/2026, 9:54:29 pm'}</td>
                                     <td className={styles.umActionCell}>
-                                        <svg
-                                            className={styles.umActionIcon}
-                                            fill="currentColor"
-                                            viewBox="0 0 20 20"
-                                            onClick={() => toggleActionMenu(u.id)}
+                                        <button
+                                            type="button"
+                                            className="p-1 rounded-md hover:bg-gray-800 transition-colors focus:outline-none"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleActionMenu(u.id);
+                                            }}
                                         >
-                                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
-                                        </svg>
+                                            <svg
+                                                className={styles.umActionIcon}
+                                                fill="currentColor"
+                                                viewBox="0 0 20 20"
+                                            >
+                                                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                            </svg>
+                                        </button>
 
                                         {openActionId === u.id && (
                                             <div className={styles.umDropdownMenu}>
-                                                <div
-                                                    className={styles.umDropdownItem}
-                                                    onClick={() => handleEditClick(u)}
+                                                <button
+                                                    type="button"
+                                                    className={`w-full text-left ${styles.umDropdownItem}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleEditClick(u);
+                                                    }}
                                                 >
                                                     Edit
-                                                </div>
-                                                <div
-                                                    className={styles.umDropdownItemDelete}
-                                                    onClick={() => handleDelete(u.id)}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={`w-full text-left ${styles.umDropdownItemDelete}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDelete(u.id);
+                                                    }}
                                                 >
                                                     Delete
-                                                </div>
-                                                <div
-                                                    className={styles.umDropdownItemLogin}
-                                                    onClick={() => handleLoginAs(u.id)}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={`w-full text-left ${styles.umDropdownItemLogin}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleLoginAs(u.id);
+                                                    }}
                                                 >
                                                     Login as them
-                                                </div>
+                                                </button>
                                             </div>
                                         )}
                                     </td>

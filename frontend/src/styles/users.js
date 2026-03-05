@@ -31,7 +31,7 @@ const usersStyles = {
     umActionCell: "px-6 py-4 text-center text-gray-500 relative",
     umActionIcon: "w-5 h-5 inline-block cursor-pointer hover:text-white transition-colors",
 
-    umDropdownMenu: "absolute right-8 top-8 w-40 bg-[#1a1a1a] border border-[#333] rounded-md shadow-xl z-50 overflow-hidden text-left shadow-2xl",
+    umDropdownMenu: "absolute right-0 top-10 w-40 bg-[#1a1a1a] border border-[#333] rounded-md shadow-2xl z-[9999] overflow-hidden text-left",
     umDropdownItem: "px-4 py-2 text-sm text-gray-300 hover:bg-[#333] hover:text-white cursor-pointer transition-colors",
     umDropdownItemDelete: "px-4 py-2 text-sm text-red-500 hover:bg-[#333] hover:text-red-400 cursor-pointer transition-colors border-t border-[#333]",
     umDropdownItemLogin: "px-4 py-2 text-sm text-blue-400 hover:bg-[#333] hover:text-blue-300 cursor-pointer border-t border-[#333] transition-colors",
