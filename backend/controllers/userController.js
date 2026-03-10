@@ -49,9 +49,9 @@ const signupUser = async (req, res, next) => {
             [currentReferrerCode, referral_code, currentLevel]
           );
 
-          // Find the parent of the current referrer
+          // Find the parent of the current referrer (i.e., who referred them)
           const parentRes = await db.query(
-            'SELECT u2.referral_code FROM "User" u1 LEFT JOIN "User" u2 ON u1.referred_by = u2.id WHERE u1.referral_code = $1',
+            'SELECT u2.referral_code FROM "User" u1 JOIN "User" u2 ON u1.referred_by = u2.id WHERE u1.referral_code = $1',
             [currentReferrerCode]
           );
 
@@ -434,34 +434,44 @@ const getMyNetwork = async (req, res, next) => {
     const myCode = userRes.rows[0].referral_code;
     const myName = userRes.rows[0].name;
 
-    // Recursive function to build the tree
-    const buildTree = async (referralCode, userName, depth = 0, maxDepth = 5) => {
+    // Fetch ONLY explicit direct (Level 1) links across the entire database to build a strict tree.
+    const allLinksRes = await db.query(`
+      SELECT r.referrer_code, r.referred_code, r.created_at, u.name as referred_name
+      FROM "Referral" r
+      JOIN "User" u ON r.referred_code = u.referral_code
+      WHERE r.level = 1
+      ORDER BY r.created_at ASC
+    `);
+
+    // Build a map of parentCode -> array of children
+    const childrenMap = {};
+    for (const row of allLinksRes.rows) {
+      if (!childrenMap[row.referrer_code]) {
+        childrenMap[row.referrer_code] = [];
+      }
+      childrenMap[row.referrer_code].push({
+        name: row.referred_name,
+        referralCode: row.referred_code
+      });
+    }
+
+    // Recursive pure function to build exactly the downline starting from any node (no depth limit)
+    const buildTreeMem = (referralCode, userName) => {
       const node = {
         name: userName,
         referralCode: referralCode,
         children: []
       };
 
-      if (depth >= maxDepth) return node;
-
-      // Get direct referrals (level 1 only from this referrer)
-      const childrenRes = await db.query(`
-        SELECT u.name, u.referral_code
-        FROM "Referral" r
-        JOIN "User" u ON r.referred_code = u.referral_code
-        WHERE r.referrer_code = $1 AND r.level = 1
-        ORDER BY r.created_at ASC
-      `, [referralCode]);
-
-      for (const child of childrenRes.rows) {
-        const childNode = await buildTree(child.referral_code, child.name, depth + 1, maxDepth);
-        node.children.push(childNode);
+      const directChildren = childrenMap[referralCode] || [];
+      for (const child of directChildren) {
+        node.children.push(buildTreeMem(child.referralCode, child.name));
       }
 
       return node;
     };
 
-    const tree = await buildTree(myCode, myName);
+    const tree = buildTreeMem(myCode, myName);
 
     res.status(200).json(tree);
   } catch (error) {
