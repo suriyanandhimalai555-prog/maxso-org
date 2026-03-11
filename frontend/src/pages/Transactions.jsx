@@ -52,7 +52,10 @@ const Transactions = () => {
             const trans = [];
 
             data.forEach(t => {
-                if (t.type === 'deposit') {
+                const typeLower = (t.type || '').toLowerCase();
+                const descLower = (t.description || '').toLowerCase();
+
+                if (typeLower === 'deposit') {
                     deps.push({
                         ...t,
                         from_user: t.from_user || `ID:${t.user_id}`,
@@ -60,27 +63,37 @@ const Transactions = () => {
                         plan_name: t.description || 'Deposit',
                         transaction_hash: t.transaction_hash || `TXN-${t.id}`
                     });
-                } else if (t.type === 'withdraw') {
+                } else if (typeLower === 'withdraw' || descLower.includes('withdraw')) {
                     withs.push({
                         ...t,
-                        usercode: t.from_user || `ID:${t.user_id}`,
-                        transaction_hash: t.transaction_hash || `TXN-${t.id}`
+                        usercode: t.from_user || t.user_name || `ID:${t.user_id}`,
+                        transaction_hash: t.transaction_hash || `TXN-${t.id}`,
+                        status: t.status || 'pending'
                     });
-                } else if (['transfer', 'roi_income', 'level_income', 'direct_income'].includes(t.type)) {
-                    const isIncome = ['roi_income', 'level_income', 'direct_income'].includes(t.type);
+                } else if (
+                    ['transfer', 'roi_income', 'Daily ROI Income', 'level_income', 'Level Income', 'direct_income', 'Referral Bonus'].includes(t.type) ||
+                    descLower.includes('income') ||
+                    descLower.includes('referral') ||
+                    descLower.includes('wallet created')
+                ) {
+                    const isIncome = ['roi_income', 'Daily ROI Income', 'level_income', 'Level Income', 'direct_income', 'Referral Bonus'].includes(t.type) ||
+                        descLower.includes('income') || descLower.includes('referral');
+
+                    let displayType = 'Transfer';
+                    if (typeLower === 'roi_income' || descLower.includes('roi income')) displayType = 'Daily ROI Income';
+                    else if (typeLower === 'level_income' || descLower.includes('level income')) displayType = 'Level Income';
+                    else if (typeLower === 'direct_income' || descLower.includes('referral')) displayType = 'Direct Referral Income';
+                    else if (descLower.includes('wallet created')) displayType = 'Wallet Created';
+
                     trans.push({
                         ...t,
-                        // For income types: backend from_user=earner, to_user=source. Swap so From=source, To=earner
                         from_user: isIncome
                             ? (t.to_user || t.from_user || `ID:${t.reference_user_id || t.user_id}`)
                             : (t.from_user || `ID:${t.user_id}`),
                         to_user: isIncome
                             ? (t.from_user || t.user_name || `ID:${t.user_id}`)
                             : (t.to_user || `ID:${t.reference_user_id}`),
-                        type: t.type === 'roi_income' ? 'Daily ROI Income'
-                            : t.type === 'level_income' ? 'Level Income'
-                                : t.type === 'direct_income' ? 'Direct Referral Income'
-                                    : 'Transfer'
+                        type: displayType
                     });
                 }
             });

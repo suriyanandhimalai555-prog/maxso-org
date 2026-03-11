@@ -24,7 +24,7 @@ app.use(cors({
   credentials: true
 }));
 
-app.options('*', cors()); 
+app.options('*', cors());
 
 app.use(express.json())
 app.use(cookieParser());
@@ -42,6 +42,10 @@ app.use('/api/transactions', require('./routes/transaction'))
 app.use('/api/dashboard', require('./routes/dashboard'))
 
 app.use(errorHandler);
+
+// Initialize Background Jobs
+require('./cron/dailyRoiJob').start();
+require('./cron/monthlyLevelJob').start();
 
 // listen for requests
 app.listen(process.env.PORT, () => {

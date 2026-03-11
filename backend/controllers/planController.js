@@ -158,14 +158,8 @@ const buyPlan = async (req, res, next) => {
         const now = new Date();
         if (plan.duration_unit === 'days') {
             endDate = new Date(now.getTime() + plan.duration * 24 * 60 * 60 * 1000);
-        } else if (plan.duration_unit === 'months') {
-            endDate = new Date(now);
-            endDate.setMonth(endDate.getMonth() + plan.duration);
-        } else if (plan.duration_unit === 'years') {
-            endDate = new Date(now);
-            endDate.setFullYear(endDate.getFullYear() + plan.duration);
         } else {
-            endDate = new Date(now.getTime() + plan.duration * 30 * 24 * 60 * 60 * 1000);
+            endDate = new Date(now.getTime() + (plan.duration * 30) * 24 * 60 * 60 * 1000);
         }
 
         // 5. Create UserPlan record
@@ -181,31 +175,26 @@ const buyPlan = async (req, res, next) => {
             [userId, 'plan_purchase', amount, 'completed']
         );
 
-        // 7. Referral commission distribution
-        if (userCode) {
-            const configQuery = `
-                SELECT 
-                    r.referrer_code, 
-                    r.level, 
-                    c.percentage,
-                    u.id as referrer_id
+        // 7. Referral Bonus distribution (Direct Referrer Only)
+        if (userCode && parseFloat(plan.referral_bonus) > 0) {
+            // Find direct referrer
+            const refQuery = `
+                SELECT u.id as referrer_id
                 FROM "Referral" r
-                JOIN "LevelConfig" c ON r.level = c.level
                 JOIN "User" u ON r.referrer_code = u.referral_code
-                WHERE r.referred_code = $1 AND c.status = 'active';
+                WHERE r.referred_code = $1 AND r.level = 1;
             `;
-            const commRes = await db.query(configQuery, [userCode]);
+            const refRes = await db.query(refQuery, [userCode]);
 
-            for (const comm of commRes.rows) {
-                const commAmount = (parseFloat(amount) * parseFloat(comm.percentage)) / 100;
-                if (commAmount > 0) {
-                    const incomeType = parseInt(comm.level) === 1 ? 'direct_income' : 'level_income';
-                    await db.query('UPDATE "User" SET wallet_balance = wallet_balance + $1 WHERE id = $2', [commAmount, comm.referrer_id]);
-                    await db.query(
-                        'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
-                        [comm.referrer_id, incomeType, commAmount, 'completed', userId]
-                    );
-                }
+            if (refRes.rows.length > 0) {
+                const referrerId = refRes.rows[0].referrer_id;
+                const bonusAmount = (parseFloat(amount) * parseFloat(plan.referral_bonus)) / 100;
+
+                await db.query('UPDATE "User" SET wallet_balance = wallet_balance + $1 WHERE id = $2', [bonusAmount, referrerId]);
+                await db.query(
+                    'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
+                    [referrerId, 'Referral Bonus', bonusAmount, 'completed', userId]
+                );
             }
         }
 
@@ -254,30 +243,31 @@ const getMyPlans = async (req, res, next) => {
 
         // For each user plan, calculate earnings
         const plansWithEarnings = await Promise.all(result.rows.map(async (plan) => {
-            // Get ROI earnings (plan_purchase related ROI distributions for this user)
+            // Description format: 'UserPlan ID: 123 | '
+            const descMatch = `UserPlan ID: ${plan.id} |%`;
+
+            // Get ROI earnings mapped to this specific user plan
             const roiRes = await db.query(
                 `SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction" 
-                 WHERE user_id = $1 AND type = 'roi_income' AND created_at >= $2`,
-                [userId, plan.start_date]
+                 WHERE user_id = $1 AND type = 'Daily ROI Income' AND description LIKE $2`,
+                [userId, descMatch]
             );
 
-            // Get level/direct income earnings
+            // Get level income earnings mapped to this specific user plan
             const levelRes = await db.query(
                 `SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction" 
-                 WHERE user_id = $1 AND type IN ('level_income', 'direct_income') AND created_at >= $2`,
-                [userId, plan.start_date]
+                 WHERE user_id = $1 AND type = 'Level Income' AND description LIKE $2`,
+                [userId, descMatch]
             );
 
             const roiEarnings = parseFloat(roiRes.rows[0].total);
             const levelEarnings = parseFloat(levelRes.rows[0].total);
             const totalEarnings = roiEarnings + levelEarnings;
 
-            // Parse ceiling limit - try to extract multiplier (e.g., "10X" -> 10)
-            let ceilingAmount = parseFloat(plan.amount) * 10; // default 10x
-            const ceilingMatch = plan.ceiling_limit.match(/(\d+(?:\.\d+)?)\s*[xX]/);
-            if (ceilingMatch) {
-                ceilingAmount = parseFloat(plan.amount) * parseFloat(ceilingMatch[1]);
-            }
+            // Ceiling limit is a plain number
+            let limitMultiplier = parseFloat(plan.ceiling_limit);
+            if (isNaN(limitMultiplier)) limitMultiplier = 1;
+            const ceilingAmount = parseFloat(plan.amount) * limitMultiplier;
 
             const progress = ceilingAmount > 0 ? ((totalEarnings / ceilingAmount) * 100).toFixed(1) : 0;
 

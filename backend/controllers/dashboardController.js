@@ -36,13 +36,14 @@ const getDashboardStats = async (req, res, next) => {
             const walletRes = await db.query(`
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
-                WHERE type IN ('level_income', 'roi_income', 'direct_income') AND status = 'completed'
+                WHERE type IN ('level_income', 'Level Income', 'roi_income', 'Daily ROI Income', 'direct_income', 'Referral Bonus') AND status = 'completed'
                 GROUP BY type
             `);
             walletRes.rows.forEach(row => {
-                if (row.type === 'level_income') stats.wallet.levelIncome = parseFloat(row.total);
-                if (row.type === 'roi_income') stats.wallet.roiIncome = parseFloat(row.total);
-                if (row.type === 'direct_income') stats.wallet.directIncome = parseFloat(row.total);
+                const t = row.type;
+                if (t === 'level_income' || t === 'Level Income') stats.wallet.levelIncome += parseFloat(row.total);
+                if (t === 'roi_income' || t === 'Daily ROI Income') stats.wallet.roiIncome += parseFloat(row.total);
+                if (t === 'direct_income' || t === 'Referral Bonus') stats.wallet.directIncome += parseFloat(row.total);
             });
 
             // 3. Earnings (same as wallet for admin - platform-wide totals)
@@ -93,13 +94,14 @@ const getDashboardStats = async (req, res, next) => {
             const earningsRes = await db.query(`
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
-                WHERE user_id = $1 AND type IN ('level_income', 'roi_income', 'direct_income') AND status = 'completed'
+                WHERE user_id = $1 AND type IN ('level_income', 'Level Income', 'roi_income', 'Daily ROI Income', 'direct_income', 'Referral Bonus') AND status = 'completed'
                 GROUP BY type
             `, [userId]);
             earningsRes.rows.forEach(row => {
-                if (row.type === 'roi_income') stats.earnings.roiIncome = parseFloat(row.total);
-                if (row.type === 'level_income') stats.earnings.levelIncome = parseFloat(row.total);
-                if (row.type === 'direct_income') stats.earnings.referralIncome = parseFloat(row.total);
+                const t = row.type;
+                if (t === 'roi_income' || t === 'Daily ROI Income') stats.earnings.roiIncome += parseFloat(row.total);
+                if (t === 'level_income' || t === 'Level Income') stats.earnings.levelIncome += parseFloat(row.total);
+                if (t === 'direct_income' || t === 'Referral Bonus') stats.earnings.referralIncome += parseFloat(row.total);
             });
 
             // 2. Wallet Balance (available income = total income - plan purchases from each wallet type)
