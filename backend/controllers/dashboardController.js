@@ -78,7 +78,7 @@ const getDashboardStats = async (req, res, next) => {
                     SUM(amount) as total_amount,
                     COUNT(*) as count
                 FROM "Transaction"
-                WHERE type = 'withdraw' AND status = 'completed'
+                WHERE type = 'withdraw' AND status IN ('completed', 'approved')
             `);
             stats.withdraws.totalAmount = parseFloat(withRes.rows[0].total_amount) || 0;
             stats.withdraws.count = parseInt(withRes.rows[0].count) || 0;
@@ -158,7 +158,7 @@ const getDashboardStats = async (req, res, next) => {
                     SUM(amount) as total_amount,
                     COUNT(*) as count
                 FROM "Transaction"
-                WHERE user_id = $1 AND type = 'withdraw' AND status = 'completed'
+                WHERE user_id = $1 AND type = 'withdraw' AND status IN ('completed', 'approved')
             `, [userId]);
             stats.withdraws.totalAmount = parseFloat(myWithRes.rows[0].total_amount) || 0;
             stats.withdraws.count = parseInt(myWithRes.rows[0].count) || 0;
