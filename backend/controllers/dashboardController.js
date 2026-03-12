@@ -11,6 +11,7 @@ const getDashboardStats = async (req, res, next) => {
             users: { total: 0, active: 0, inactive: 0 },
             wallet: { levelIncome: 0, roiIncome: 0, directIncome: 0 },
             earnings: { roiIncome: 0, levelIncome: 0, referralIncome: 0 },
+            todayEarnings: { dailyRoi: 0, levelIncome: 0 },
             referrals: { total: 0, level1: 0, earnings: 0 },
             deposits: { totalAmount: 0, count: 0 },
             withdraws: { totalAmount: 0, count: 0 }
@@ -82,6 +83,21 @@ const getDashboardStats = async (req, res, next) => {
             `);
             stats.withdraws.totalAmount = parseFloat(withRes.rows[0].total_amount) || 0;
             stats.withdraws.count = parseInt(withRes.rows[0].count) || 0;
+
+            // 7. Today's Earnings (platform-wide)
+            const todayRes = await db.query(`
+                SELECT type, SUM(amount) as total
+                FROM "Transaction"
+                WHERE type IN ('roi_income', 'Daily ROI Income', 'level_income', 'Level Income')
+                  AND status = 'completed'
+                  AND created_at::date = CURRENT_DATE
+                GROUP BY type
+            `);
+            todayRes.rows.forEach(row => {
+                const t = row.type;
+                if (t === 'roi_income' || t === 'Daily ROI Income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
+                if (t === 'level_income' || t === 'Level Income') stats.todayEarnings.levelIncome += parseFloat(row.total);
+            });
 
         } else {
             // Personal Stats for Regular User
@@ -162,6 +178,22 @@ const getDashboardStats = async (req, res, next) => {
             `, [userId]);
             stats.withdraws.totalAmount = parseFloat(myWithRes.rows[0].total_amount) || 0;
             stats.withdraws.count = parseInt(myWithRes.rows[0].count) || 0;
+
+            // 6. Today's Earnings (user-specific)
+            const todayRes = await db.query(`
+                SELECT type, SUM(amount) as total
+                FROM "Transaction"
+                WHERE user_id = $1
+                  AND type IN ('roi_income', 'Daily ROI Income', 'level_income', 'Level Income')
+                  AND status = 'completed'
+                  AND created_at::date = CURRENT_DATE
+                GROUP BY type
+            `, [userId]);
+            todayRes.rows.forEach(row => {
+                const t = row.type;
+                if (t === 'roi_income' || t === 'Daily ROI Income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
+                if (t === 'level_income' || t === 'Level Income') stats.todayEarnings.levelIncome += parseFloat(row.total);
+            });
         }
 
         res.status(200).json(stats);

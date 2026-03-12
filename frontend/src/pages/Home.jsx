@@ -33,6 +33,7 @@ const Home = () => {
     users: { total: 0, active: 0, inactive: 0 },
     wallet: { levelIncome: 0, roiIncome: 0, directIncome: 0 },
     earnings: { roiIncome: 0, levelIncome: 0, referralIncome: 0 },
+    todayEarnings: { dailyRoi: 0, levelIncome: 0 },
     referrals: { total: 0, level1: 0, earnings: 0 },
     deposits: { totalAmount: 0, count: 0 },
     withdraws: { totalAmount: 0, count: 0 }
@@ -79,7 +80,7 @@ const Home = () => {
     navigate('/plans');
   };
 
-  const { users, wallet, earnings, referrals, deposits, withdraws } = stats;
+  const { users, wallet, earnings, todayEarnings, referrals, deposits, withdraws } = stats;
 
   return (
     <div className="space-y-10 mb-10 w-full max-w-6xl">
@@ -128,6 +129,36 @@ const Home = () => {
           </div>
         </div>
       )}
+
+      {/* Today's Earnings */}
+      <div>
+        <h3 className={styles.dashSectionTitle}>Today's Earnings</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className={`${styles.dashWalletCard} border-emerald-900/40`}>
+            <div className={styles.dashWalletHeader}>
+              <span className={styles.dashWalletLabel}>Today's Daily ROI</span>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className={`${styles.dashWalletIcon} text-emerald-400`}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+            </div>
+            <span className={`${styles.dashWalletValue} text-emerald-400`}>
+              ${isLoading ? '...' : todayEarnings.dailyRoi.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+
+          <div className={`${styles.dashWalletCard} border-amber-900/40`}>
+            <div className={styles.dashWalletHeader}>
+              <span className={styles.dashWalletLabel}>Today's Level Income</span>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className={`${styles.dashWalletIcon} text-amber-400`}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+              </svg>
+            </div>
+            <span className={`${styles.dashWalletValue} text-amber-400`}>
+              ${isLoading ? '...' : todayEarnings.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* Wallet Balance */}
       <div>
