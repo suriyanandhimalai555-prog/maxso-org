@@ -101,7 +101,7 @@ module.exports = {
     processDailyROI,
     start: () => {
         // Run every day at 11:50 PM IST (18:20 UTC)
-        cron.schedule('50 18 * * *', processDailyROI);
+        cron.schedule('20 18 * * *', processDailyROI);
         console.log('Daily ROI Cron Job initialized.');
     }
 };
