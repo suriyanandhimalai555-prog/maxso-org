@@ -35,7 +35,7 @@ const createDeposit = async (req, res, next) => {
         // Create transaction record
         const result = await db.query(
             'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [userId, 'deposit', amount, 'completed', depositRefUser]
+            [userId, 'Deposit', amount, 'completed', depositRefUser]
         );
 
         // --- LEVEL COMMISSION DISTRIBUTION ---
@@ -138,7 +138,7 @@ const createWithdraw = async (req, res, next) => {
         // Create transaction record
         const result = await db.query(
             'INSERT INTO "Transaction" (user_id, type, amount, status) VALUES ($1, $2, $3, $4) RETURNING *',
-            [userId, 'withdraw', amount, 'completed']
+            [userId, 'Withdraw Approved', amount, 'completed']
         );
 
         await db.query('COMMIT');
@@ -225,6 +225,10 @@ const getAdminTransactions = async (req, res, next) => {
         query += ` ORDER BY t.created_at DESC`;
 
         const result = await db.query(query, params);
+        
+        const withCount = result.rows.filter(r => (r.type||'').toLowerCase().includes('withdraw')).length;
+        console.log(`[API] /admin/history returning ${result.rows.length} total rows. Withdrawals: ${withCount}`);
+        
         res.status(200).json(result.rows);
     } catch (error) {
         res.status(500);
@@ -251,6 +255,10 @@ const getMyTransactions = async (req, res, next) => {
     `;
 
         const result = await db.query(query, [userId]);
+
+        const withCount = result.rows.filter(r => (r.type || '').toLowerCase().includes('withdraw')).length;
+        console.log(`[API] /history for user ${userId} returning ${result.rows.length} total rows. Withdrawals: ${withCount}`);
+
         res.status(200).json(result.rows);
     } catch (error) {
         res.status(500);

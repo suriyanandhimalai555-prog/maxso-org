@@ -203,7 +203,7 @@ const buyPlan = async (req, res, next) => {
                 await db.query('UPDATE "User" SET direct_wallet_balance = direct_wallet_balance + $1 WHERE id = $2', [bonusAmount, referrerId]);
                 await db.query(
                     'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
-                    [referrerId, 'Referral Bonus', bonusAmount, 'completed', userId]
+                    [referrerId, 'Direct Referral Income', bonusAmount, 'completed', userId]
                 );
             }
         }
@@ -266,7 +266,7 @@ const getMyPlans = async (req, res, next) => {
             // Get level income earnings mapped to this specific user plan
             const levelRes = await db.query(
                 `SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction" 
-                 WHERE user_id = $1 AND type = 'Level Income' AND description LIKE $2`,
+                 WHERE user_id = $1 AND (type ILIKE '%level%income%' OR type = 'level_income') AND description LIKE $2`,
                 [userId, descMatch]
             );
 

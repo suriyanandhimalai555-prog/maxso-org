@@ -71,7 +71,7 @@ const processMonthlyLevelIncome = async () => {
                     const descMatch = `UserPlan ID: ${tPlan.user_plan_id} |%`;
                     const earnedRes = await db.query(`
                         SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction" 
-                        WHERE user_id = $1 AND type IN ('Daily ROI Income', 'Level Income') AND description LIKE $2
+                        WHERE user_id = $1 AND (type ILIKE '%roi income%' OR type ILIKE '%level%income%' OR type = 'roi_income' OR type = 'level_income') AND description LIKE $2
                     `, [upline.upline_id, descMatch]);
 
                     const totalEarned = parseFloat(earnedRes.rows[0].total);
@@ -89,9 +89,10 @@ const processMonthlyLevelIncome = async () => {
 
                     // Log Transfer
                     const desc = `UserPlan ID: ${tPlan.user_plan_id} | Src Plan: ${plan.user_plan_id} | Level ${upline.level}`;
+                    const levelTypeString = `Level ${upline.level} Income`;
                     await db.query(
                         'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id, description) VALUES ($1, $2, $3, $4, $5, $6)',
-                        [upline.upline_id, 'Level Income', creditAmount, 'completed', plan.user_id, desc]
+                        [upline.upline_id, levelTypeString, creditAmount, 'completed', plan.user_id, desc]
                     );
 
                     remainingIncomeToDistribute -= creditAmount;

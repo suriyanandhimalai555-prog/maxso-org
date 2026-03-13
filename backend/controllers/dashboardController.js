@@ -37,14 +37,14 @@ const getDashboardStats = async (req, res, next) => {
             const walletRes = await db.query(`
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
-                WHERE type IN ('level_income', 'Level Income', 'roi_income', 'Daily ROI Income', 'direct_income', 'Referral Bonus') AND status = 'completed'
+                WHERE (type ILIKE '%level%income%' OR type ILIKE '%level_income%' OR type ILIKE '%roi income%' OR type = 'roi_income' OR type ILIKE '%direct%income%' OR type ILIKE '%referral%bonus%') AND status = 'completed'
                 GROUP BY type
             `);
             walletRes.rows.forEach(row => {
-                const t = row.type;
-                if (t === 'level_income' || t === 'Level Income') stats.wallet.levelIncome += parseFloat(row.total);
-                if (t === 'roi_income' || t === 'Daily ROI Income') stats.wallet.roiIncome += parseFloat(row.total);
-                if (t === 'direct_income' || t === 'Referral Bonus') stats.wallet.directIncome += parseFloat(row.total);
+                const t = row.type.toLowerCase();
+                if (t.includes('level') && t.includes('income') && t !== 'level_income_bonus') stats.wallet.levelIncome += parseFloat(row.total);
+                else if (t.includes('roi income') || t === 'roi_income') stats.wallet.roiIncome += parseFloat(row.total);
+                else if ((t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) stats.wallet.directIncome += parseFloat(row.total);
             });
 
             // 3. Earnings (same as wallet for admin - platform-wide totals)
@@ -68,7 +68,7 @@ const getDashboardStats = async (req, res, next) => {
             const depRes = await db.query(`
                 SELECT COUNT(*) as count, SUM(amount) as total_amount
                 FROM "Transaction"
-                WHERE type = 'deposit' AND status = 'completed'
+                WHERE (type ILIKE '%deposit%' OR type ILIKE '%wallet created%') AND status = 'completed'
             `);
             stats.deposits.count = parseInt(depRes.rows[0].count) || 0;
             stats.deposits.totalAmount = parseFloat(depRes.rows[0].total_amount) || 0;
@@ -79,7 +79,7 @@ const getDashboardStats = async (req, res, next) => {
                     SUM(amount) as total_amount,
                     COUNT(*) as count
                 FROM "Transaction"
-                WHERE type = 'withdraw' AND status IN ('completed', 'approved')
+                WHERE type ILIKE '%withdraw%' AND status IN ('completed', 'approved')
             `);
             stats.withdraws.totalAmount = parseFloat(withRes.rows[0].total_amount) || 0;
             stats.withdraws.count = parseInt(withRes.rows[0].count) || 0;
@@ -88,15 +88,15 @@ const getDashboardStats = async (req, res, next) => {
             const todayRes = await db.query(`
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
-                WHERE type IN ('roi_income', 'Daily ROI Income', 'level_income', 'Level Income')
+                WHERE (type ILIKE '%roi income%' OR type = 'roi_income' OR type ILIKE '%level%income%' OR type ILIKE '%level_income%')
                   AND status = 'completed'
                   AND created_at::date = CURRENT_DATE
                 GROUP BY type
             `);
             todayRes.rows.forEach(row => {
-                const t = row.type;
-                if (t === 'roi_income' || t === 'Daily ROI Income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
-                if (t === 'level_income' || t === 'Level Income') stats.todayEarnings.levelIncome += parseFloat(row.total);
+                const t = row.type.toLowerCase();
+                if (t.includes('roi income') || t === 'roi_income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
+                else if (t.includes('level') && t.includes('income')) stats.todayEarnings.levelIncome += parseFloat(row.total);
             });
 
         } else {
@@ -110,14 +110,14 @@ const getDashboardStats = async (req, res, next) => {
             const earningsRes = await db.query(`
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
-                WHERE user_id = $1 AND type IN ('level_income', 'Level Income', 'roi_income', 'Daily ROI Income', 'direct_income', 'Referral Bonus') AND status = 'completed'
+                WHERE user_id = $1 AND (type ILIKE '%level%income%' OR type ILIKE '%level_income%' OR type ILIKE '%roi income%' OR type = 'roi_income' OR type ILIKE '%direct%income%' OR type ILIKE '%referral%bonus%') AND status = 'completed'
                 GROUP BY type
             `, [userId]);
             earningsRes.rows.forEach(row => {
-                const t = row.type;
-                if (t === 'roi_income' || t === 'Daily ROI Income') stats.earnings.roiIncome += parseFloat(row.total);
-                if (t === 'level_income' || t === 'Level Income') stats.earnings.levelIncome += parseFloat(row.total);
-                if (t === 'direct_income' || t === 'Referral Bonus') stats.earnings.referralIncome += parseFloat(row.total);
+                const t = row.type.toLowerCase();
+                if (t.includes('level') && t.includes('income') && t !== 'level_income_bonus') stats.earnings.levelIncome += parseFloat(row.total);
+                else if (t.includes('roi income') || t === 'roi_income') stats.earnings.roiIncome += parseFloat(row.total);
+                else if ((t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) stats.earnings.referralIncome += parseFloat(row.total);
             });
 
             // 2. Wallet Balance (read directly from DB wallet columns)
@@ -149,7 +149,7 @@ const getDashboardStats = async (req, res, next) => {
             const myDepRes = await db.query(`
                 SELECT COUNT(*) as count, SUM(amount) as total_amount
                 FROM "Transaction"
-                WHERE user_id = $1 AND type = 'deposit' AND status = 'completed'
+                WHERE user_id = $1 AND (type ILIKE '%deposit%' OR type ILIKE '%wallet created%') AND status = 'completed'
             `, [userId]);
             stats.deposits.count = parseInt(myDepRes.rows[0].count) || 0;
             stats.deposits.totalAmount = parseFloat(myDepRes.rows[0].total_amount) || 0;
@@ -160,7 +160,7 @@ const getDashboardStats = async (req, res, next) => {
                     SUM(amount) as total_amount,
                     COUNT(*) as count
                 FROM "Transaction"
-                WHERE user_id = $1 AND type = 'withdraw' AND status IN ('completed', 'approved')
+                WHERE user_id = $1 AND type ILIKE '%withdraw%' AND status IN ('completed', 'approved')
             `, [userId]);
             stats.withdraws.totalAmount = parseFloat(myWithRes.rows[0].total_amount) || 0;
             stats.withdraws.count = parseInt(myWithRes.rows[0].count) || 0;
@@ -170,15 +170,15 @@ const getDashboardStats = async (req, res, next) => {
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
                 WHERE user_id = $1
-                  AND type IN ('roi_income', 'Daily ROI Income', 'level_income', 'Level Income')
+                  AND (type ILIKE '%roi income%' OR type = 'roi_income' OR type ILIKE '%level%income%' OR type ILIKE '%level_income%')
                   AND status = 'completed'
                   AND created_at::date = CURRENT_DATE
                 GROUP BY type
             `, [userId]);
             todayRes.rows.forEach(row => {
-                const t = row.type;
-                if (t === 'roi_income' || t === 'Daily ROI Income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
-                if (t === 'level_income' || t === 'Level Income') stats.todayEarnings.levelIncome += parseFloat(row.total);
+                const t = row.type.toLowerCase();
+                if (t.includes('roi income') || t === 'roi_income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
+                else if (t.includes('level') && t.includes('income')) stats.todayEarnings.levelIncome += parseFloat(row.total);
             });
         }
 

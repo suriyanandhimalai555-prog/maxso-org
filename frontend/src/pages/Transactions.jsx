@@ -51,52 +51,56 @@ const Transactions = () => {
             const withs = [];
             const trans = [];
 
+            // Helper: classify a transaction type string into a tab category
+            const classifyType = (typeStr) => {
+                const tl = (typeStr || '').toLowerCase();
+                if (tl.includes('deposit') || tl.includes('wallet created')) return 'deposit';
+                if (tl.includes('withdraw')) return 'withdraw';
+                if (tl.includes('roi') || tl.includes('level') || tl.includes('income') ||
+                    tl.includes('referral') || tl.includes('direct') || tl.includes('transfer') ||
+                    tl.includes('plan_purchase') || tl.includes('bonus')) return 'transfer';
+                return 'transfer'; // catch-all: show in transfers
+            };
+
+            console.log(`[Transactions] Total API rows: ${data.length}`);
+
             data.forEach(t => {
                 const typeLower = (t.type || '').toLowerCase();
-                const descLower = (t.description || '').toLowerCase();
+                const tab = classifyType(t.type);
 
-                if (typeLower === 'deposit') {
+                if (tab === 'deposit') {
                     deps.push({
                         ...t,
                         from_user: t.from_user || `ID:${t.user_id}`,
                         to_user: t.to_user || `ID:${t.reference_user_id}`,
-                        plan_name: t.description || 'Deposit',
+                        plan_name: t.type || t.description || 'Deposit',
                         transaction_hash: t.transaction_hash || `TXN-${t.id}`
                     });
-                } else if (typeLower === 'withdraw' || descLower.includes('withdraw')) {
+                } else if (tab === 'withdraw') {
                     withs.push({
                         ...t,
                         usercode: t.from_user || t.user_name || `ID:${t.user_id}`,
                         transaction_hash: t.transaction_hash || `TXN-${t.id}`,
                         status: t.status || 'pending'
                     });
-                } else if (
-                    ['transfer', 'roi_income', 'Daily ROI Income', 'level_income', 'Level Income', 'direct_income', 'Referral Bonus'].includes(t.type) ||
-                    descLower.includes('income') ||
-                    descLower.includes('referral') ||
-                    descLower.includes('wallet created')
-                ) {
-                    const isIncome = ['roi_income', 'Daily ROI Income', 'level_income', 'Level Income', 'direct_income', 'Referral Bonus'].includes(t.type) ||
-                        descLower.includes('income') || descLower.includes('referral');
-
-                    let displayType = 'Transfer';
-                    if (typeLower === 'roi_income' || descLower.includes('roi income')) displayType = 'Daily ROI Income';
-                    else if (typeLower === 'level_income' || descLower.includes('level income')) displayType = 'Level Income';
-                    else if (typeLower === 'direct_income' || descLower.includes('referral')) displayType = 'Direct Referral Income';
-                    else if (descLower.includes('wallet created')) displayType = 'Wallet Created';
+                } else {
+                    // Transfer / Income types — use the exact DB type string as the display label
+                    let displayType = t.type;
+                    // Only convert underscore-style generic names to pretty names
+                    if (typeLower === 'roi_income') displayType = 'Daily ROI Income';
+                    else if (typeLower === 'level_income') displayType = 'Level Income';
+                    else if (typeLower === 'direct_income') displayType = 'Direct Referral Income';
 
                     trans.push({
                         ...t,
-                        from_user: isIncome
-                            ? (t.to_user || t.from_user || `ID:${t.reference_user_id || t.user_id}`)
-                            : (t.from_user || `ID:${t.user_id}`),
-                        to_user: isIncome
-                            ? (t.from_user || t.user_name || `ID:${t.user_id}`)
-                            : (t.to_user || `ID:${t.reference_user_id}`),
+                        from_user: t.to_user || t.from_user || `ID:${t.reference_user_id || t.user_id}`,
+                        to_user: t.from_user || t.user_name || `ID:${t.user_id}`,
                         type: displayType
                     });
                 }
             });
+
+            console.log(`[Transactions] Classified: ${deps.length} deposits, ${withs.length} withdraws, ${trans.length} transfers`);
 
             setDeposits(deps);
             setWithdraws(withs);
@@ -191,6 +195,7 @@ const Transactions = () => {
                 return (item.usercode || '').toLowerCase().includes(term) ||
                     (item.type || '').toLowerCase().includes(term) ||
                     (item.status || '').toLowerCase().includes(term) ||
+                    (item.transaction_hash || '').toLowerCase().includes(term) ||
                     amount.includes(term);
             } else {
                 return (item.from_user || '').toLowerCase().includes(term) ||
@@ -379,7 +384,7 @@ const Transactions = () => {
                                         <td className={styles.transactionTd}>{item.usercode}</td>
                                         <td className={styles.transactionTd}>
                                             <span className={styles.transactionType}>
-                                                {item.type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                                {item.type || 'Withdraw'}
                                             </span>
                                         </td>
                                         <td className={styles.transactionTd}>
