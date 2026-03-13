@@ -140,18 +140,28 @@ const buyPlan = async (req, res, next) => {
             throw new Error(`Maximum deposit is $${plan.max_deposit}`);
         }
 
-        // 2. Check user balance
-        const userRes = await db.query('SELECT id, wallet_balance, referral_code FROM "User" WHERE id = $1 FOR UPDATE', [userId]);
+        // 2. Check user balance from the specific wallet
+        const userRes = await db.query('SELECT id, wallet_balance, roi_wallet_balance, level_wallet_balance, direct_wallet_balance, referral_code FROM "User" WHERE id = $1 FOR UPDATE', [userId]);
         if (userRes.rows.length === 0) throw new Error('User not found');
 
-        if (parseFloat(userRes.rows[0].wallet_balance) < parseFloat(amount)) {
-            throw new Error('Insufficient wallet balance');
+        // Map depositType to the correct wallet column
+        const walletMap = {
+            'roi_wallet': 'roi_wallet_balance',
+            'level_wallet': 'level_wallet_balance',
+            'trust_wallet': 'wallet_balance'
+        };
+        const walletColumn = walletMap[depositType];
+        if (!walletColumn) throw new Error('Invalid deposit type');
+
+        const availableBalance = parseFloat(userRes.rows[0][walletColumn]);
+        if (availableBalance < parseFloat(amount)) {
+            throw new Error(`Insufficient ${depositType.replace('_', ' ')} balance`);
         }
 
         const userCode = userRes.rows[0].referral_code;
 
-        // 3. Deduct balance
-        await db.query('UPDATE "User" SET wallet_balance = wallet_balance - $1 WHERE id = $2', [amount, userId]);
+        // 3. Deduct from the specific wallet
+        await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} - $1 WHERE id = $2`, [amount, userId]);
 
         // 4. Calculate end date based on plan duration
         let endDate;
@@ -188,9 +198,9 @@ const buyPlan = async (req, res, next) => {
 
             if (refRes.rows.length > 0) {
                 const referrerId = refRes.rows[0].referrer_id;
-                const bonusAmount = (parseFloat(amount) * parseFloat(plan.referral_bonus)) / 100;
+                const bonusAmount = Math.round(((parseFloat(amount) * parseFloat(plan.referral_bonus)) / 100) * 10000) / 10000;
 
-                await db.query('UPDATE "User" SET wallet_balance = wallet_balance + $1 WHERE id = $2', [bonusAmount, referrerId]);
+                await db.query('UPDATE "User" SET direct_wallet_balance = direct_wallet_balance + $1 WHERE id = $2', [bonusAmount, referrerId]);
                 await db.query(
                     'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
                     [referrerId, 'Referral Bonus', bonusAmount, 'completed', userId]

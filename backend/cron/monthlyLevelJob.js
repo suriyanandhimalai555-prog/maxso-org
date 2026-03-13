@@ -1,13 +1,14 @@
 const cron = require('node-cron');
 const db = require('../db');
 
+const round4 = (n) => Math.round(n * 10000) / 10000;
+
 const processMonthlyLevelIncome = async () => {
     console.log('[Monthly Level Job] Starting execution...');
     try {
         await db.query('BEGIN');
 
         // Fetch all active UserPlans that are exactly on a 30-day boundary
-        // We use DATE_PART to get the difference in days. Only process if days > 0 and days % 30 == 0
         const plansQuery = `
             SELECT 
                 up.id as user_plan_id, up.user_id, up.amount, up.start_date,
@@ -53,9 +54,10 @@ const processMonthlyLevelIncome = async () => {
                 `;
                 const uplinePlansRes = await db.query(uplinePlanQuery, [upline.upline_id]);
 
-                if (uplinePlansRes.rows.length === 0) continue; // Skip to next upline
+                if (uplinePlansRes.rows.length === 0) continue;
 
-                const levelIncome = monthlyRoiThisCycle * (parseFloat(upline.percentage) / 100);
+                // Calculate level income (rounding to 4 decimal places)
+                const levelIncome = round4(monthlyRoiThisCycle * (parseFloat(upline.percentage) / 100));
                 let remainingIncomeToDistribute = levelIncome;
 
                 for (let tPlan of uplinePlansRes.rows) {
@@ -80,12 +82,12 @@ const processMonthlyLevelIncome = async () => {
                         continue;
                     }
 
-                    const creditAmount = Math.min(remainingIncomeToDistribute, remainingCap);
+                    const creditAmount = round4(Math.min(remainingIncomeToDistribute, remainingCap));
 
-                    // Credit Upline
-                    await db.query('UPDATE "User" SET wallet_balance = wallet_balance + $1 WHERE id = $2', [creditAmount, upline.upline_id]);
+                    // Credit Upline's Level wallet
+                    await db.query('UPDATE "User" SET level_wallet_balance = level_wallet_balance + $1 WHERE id = $2', [creditAmount, upline.upline_id]);
 
-                    // Log Transfer - from_user_id = investor (plan.user_id), to_user_id = upline
+                    // Log Transfer
                     const desc = `UserPlan ID: ${tPlan.user_plan_id} | Src Plan: ${plan.user_plan_id} | Level ${upline.level}`;
                     await db.query(
                         'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id, description) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -113,8 +115,8 @@ const processMonthlyLevelIncome = async () => {
 module.exports = {
     processMonthlyLevelIncome,
     start: () => {
-        // Run every day at 00:30 (to follow Daily ROI)
-        cron.schedule('30 0 * * *', processMonthlyLevelIncome);
+        // Run every day at 11:55 PM IST (18:25 UTC), after Daily ROI
+        cron.schedule('55 18 * * *', processMonthlyLevelIncome);
         console.log('Monthly Level Cron Job initialized.');
     }
 };

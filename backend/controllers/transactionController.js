@@ -57,14 +57,15 @@ const createDeposit = async (req, res, next) => {
 
             // 2. Distribute commissions
             for (const comm of commRes.rows) {
-                const commAmount = (parseFloat(amount) * parseFloat(comm.percentage)) / 100;
+                const commAmount = Math.round(((parseFloat(amount) * parseFloat(comm.percentage)) / 100) * 10000) / 10000;
 
                 if (commAmount > 0) {
                     // Determine transaction type (direct is level 1, level_income is > 1)
                     const incomeType = parseInt(comm.level) === 1 ? 'direct_income' : 'level_income';
+                    const walletColumn = parseInt(comm.level) === 1 ? 'direct_wallet_balance' : 'level_wallet_balance';
 
-                    // Update the referrer's wallet
-                    await db.query('UPDATE "User" SET wallet_balance = wallet_balance + $1 WHERE id = $2', [commAmount, comm.referrer_id]);
+                    // Update the referrer's specific wallet
+                    await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} + $1 WHERE id = $2`, [commAmount, comm.referrer_id]);
 
                     // Create income transaction log for the referrer
                     await db.query(
@@ -95,17 +96,44 @@ const createWithdraw = async (req, res, next) => {
 
         await db.query('BEGIN');
 
-        // Check balance
-        const userRes = await db.query('SELECT id, wallet_balance FROM "User" WHERE referral_code = $1 FOR UPDATE', [userCode]);
+        // Check combined income balance
+        const userRes = await db.query('SELECT id, wallet_balance, roi_wallet_balance, level_wallet_balance, direct_wallet_balance FROM "User" WHERE referral_code = $1 FOR UPDATE', [userCode]);
         if (userRes.rows.length === 0) throw new Error('User not found');
         const userId = userRes.rows[0].id;
 
-        if (parseFloat(userRes.rows[0].wallet_balance) < parseFloat(amount)) {
-            throw new Error('Insufficient balance');
+        // Total available income balance
+        const totalIncomeBalance = parseFloat(userRes.rows[0].roi_wallet_balance) 
+                                 + parseFloat(userRes.rows[0].level_wallet_balance) 
+                                 + parseFloat(userRes.rows[0].direct_wallet_balance);
+
+        if (totalIncomeBalance < parseFloat(amount)) {
+            throw new Error('Insufficient income balance for withdrawal');
         }
 
-        // Deduct balance
-        await db.query('UPDATE "User" SET wallet_balance = wallet_balance - $1 WHERE id = $2', [amount, userId]);
+        // Deduct withdrawal sequentially from ROI -> Level -> Direct to prevent negative wallets
+        let withdrawAmount = parseFloat(amount);
+        let roi = parseFloat(userRes.rows[0].roi_wallet_balance);
+        let level = parseFloat(userRes.rows[0].level_wallet_balance);
+        let direct = parseFloat(userRes.rows[0].direct_wallet_balance);
+        
+        if (roi >= withdrawAmount) { roi -= withdrawAmount; withdrawAmount = 0; }
+        else { withdrawAmount -= roi; roi = 0; }
+        
+        if (withdrawAmount > 0) {
+            if (level >= withdrawAmount) { level -= withdrawAmount; withdrawAmount = 0; }
+            else { withdrawAmount -= level; level = 0; }
+        }
+        
+        if (withdrawAmount > 0) {
+            if (direct >= withdrawAmount) { direct -= withdrawAmount; withdrawAmount = 0; }
+            else { withdrawAmount -= direct; direct = 0; }
+        }
+
+        // Technically, due to line 109 `totalIncomeBalance < amount` above, we will never overdraw.
+        await db.query(
+            'UPDATE "User" SET roi_wallet_balance = $1, level_wallet_balance = $2, direct_wallet_balance = $3 WHERE id = $4', 
+            [roi, level, direct, userId]
+        );
 
         // Create transaction record
         const result = await db.query(

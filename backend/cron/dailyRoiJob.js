@@ -1,6 +1,8 @@
 const cron = require('node-cron');
 const db = require('../db');
 
+const round4 = (n) => Math.round(n * 10000) / 10000;
+
 const processDailyROI = async () => {
     console.log('[Daily ROI Job] Starting execution...');
     try {
@@ -34,22 +36,21 @@ const processDailyROI = async () => {
         for (let plan of activePlans.rows) {
             // Check expiry
             const endDate = new Date(plan.end_date);
-            // reset time for pure date comparison if needed, or just standard timestamp logic:
             if (now > endDate) {
                 await db.query('UPDATE "UserPlan" SET status = $1 WHERE id = $2', ['completed', plan.user_plan_id]);
                 continue;
             }
 
-            // Calculate daily ROI
+            // Calculate daily ROI (rounding to 4 decimal places)
             const monthlyRoi = parseFloat(plan.amount) * (parseFloat(plan.roi) / 100);
-            const dailyRoi = monthlyRoi / 30;
+            const dailyRoi = round4(monthlyRoi / 30);
 
             // Calculate max earnings
             let limitMultiplier = parseFloat(plan.ceiling_limit);
             if (isNaN(limitMultiplier)) limitMultiplier = 1;
             const maxEarnings = parseFloat(plan.amount) * limitMultiplier;
 
-            // Calculate total earned so far (ROI + Level) mapped via description since we can't alter schema
+            // Calculate total earned so far (ROI + Level) mapped via description
             const descMatch = `UserPlan ID: ${plan.user_plan_id} |%`;
             const earnedQuery = `
                 SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction"
@@ -62,15 +63,15 @@ const processDailyROI = async () => {
             const remainingCap = maxEarnings - totalEarned;
 
             if (remainingCap <= 0) {
-                // Mark plan as capped strictly
+                // Mark plan as capped
                 await db.query('UPDATE "UserPlan" SET status = $1 WHERE id = $2', ['completed', plan.user_plan_id]);
                 continue;
             }
 
-            const creditAmount = Math.min(dailyRoi, remainingCap);
+            const creditAmount = round4(Math.min(dailyRoi, remainingCap));
 
-            // Credit investor
-            await db.query('UPDATE "User" SET wallet_balance = wallet_balance + $1 WHERE id = $2', [creditAmount, plan.user_id]);
+            // Credit investor's ROI wallet
+            await db.query('UPDATE "User" SET roi_wallet_balance = roi_wallet_balance + $1 WHERE id = $2', [creditAmount, plan.user_id]);
 
             // Log transfer
             const description = `UserPlan ID: ${plan.user_plan_id} | Daily ROI`;
@@ -81,7 +82,7 @@ const processDailyROI = async () => {
 
             processedCount++;
 
-            // Unlikely to cap exactly on an ROI stroke but check anyway
+            // Check if capped after this credit
             if (remainingCap - creditAmount <= 0.0001) {
                 await db.query('UPDATE "UserPlan" SET status = $1 WHERE id = $2', ['completed', plan.user_plan_id]);
             }
@@ -99,8 +100,8 @@ const processDailyROI = async () => {
 module.exports = {
     processDailyROI,
     start: () => {
-        // Run every day at 00:00 (midnight server time)
-        cron.schedule('0 0 * * *', processDailyROI);
+        // Run every day at 11:50 PM IST (18:20 UTC)
+        cron.schedule('50 18 * * *', processDailyROI);
         console.log('Daily ROI Cron Job initialized.');
     }
 };

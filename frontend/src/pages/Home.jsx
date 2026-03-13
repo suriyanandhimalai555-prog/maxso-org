@@ -142,7 +142,7 @@ const Home = () => {
               </svg>
             </div>
             <span className={`${styles.dashWalletValue} text-emerald-400`}>
-              ${isLoading ? '...' : todayEarnings.dailyRoi.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${isLoading ? '...' : todayEarnings.dailyRoi.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
             </span>
           </div>
 
@@ -154,7 +154,7 @@ const Home = () => {
               </svg>
             </div>
             <span className={`${styles.dashWalletValue} text-amber-400`}>
-              ${isLoading ? '...' : todayEarnings.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${isLoading ? '...' : todayEarnings.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
             </span>
           </div>
         </div>
@@ -169,7 +169,7 @@ const Home = () => {
               <span className={styles.dashWalletLabel}>Level Income</span>
               <ChartUpIcon />
             </div>
-            <span className={styles.dashWalletValue}>${isLoading ? '...' : wallet.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className={styles.dashWalletValue}>${isLoading ? '...' : wallet.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
 
           <div className={styles.dashWalletCard}>
@@ -177,7 +177,7 @@ const Home = () => {
               <span className={styles.dashWalletLabel}>ROI Income</span>
               <PiggyBankIcon />
             </div>
-            <span className={styles.dashWalletValue}>${isLoading ? '...' : wallet.roiIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className={styles.dashWalletValue}>${isLoading ? '...' : wallet.roiIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
 
           <div className={styles.dashWalletCard}>
@@ -185,7 +185,7 @@ const Home = () => {
               <span className={styles.dashWalletLabel}>Direct Referral Income</span>
               <ChartUpIcon />
             </div>
-            <span className={styles.dashWalletValue}>${isLoading ? '...' : wallet.directIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className={styles.dashWalletValue}>${isLoading ? '...' : wallet.directIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
         </div>
       </div>
@@ -199,7 +199,7 @@ const Home = () => {
               <span className={styles.dashWalletLabel}>ROI Income</span>
               <ChartUpIcon />
             </div>
-            <span className={styles.dashWalletValue}>${isLoading ? '...' : earnings.roiIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className={styles.dashWalletValue}>${isLoading ? '...' : earnings.roiIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
 
           <div className={styles.dashWalletCard}>
@@ -207,7 +207,7 @@ const Home = () => {
               <span className={styles.dashWalletLabel}>Level Income</span>
               <ChartUpIcon />
             </div>
-            <span className={styles.dashWalletValue}>${isLoading ? '...' : earnings.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className={styles.dashWalletValue}>${isLoading ? '...' : earnings.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
 
           <div className={styles.dashWalletCard}>
@@ -215,7 +215,7 @@ const Home = () => {
               <span className={styles.dashWalletLabel}>Referral Income</span>
               <ChartUpIcon />
             </div>
-            <span className={styles.dashWalletValue}>${isLoading ? '...' : earnings.referralIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className={styles.dashWalletValue}>${isLoading ? '...' : earnings.referralIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
         </div>
       </div>
@@ -266,7 +266,7 @@ const Home = () => {
                 <span className={styles.dashWalletLabel}>Referral Earnings</span>
                 <ChartUpIcon />
               </div>
-              <span className={styles.dashWalletValue}>${referrals.earnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className={styles.dashWalletValue}>${referrals.earnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
             </div>
           </div>
         </div>
@@ -284,7 +284,7 @@ const Home = () => {
                 </div>
                 <div className={styles.dashListText}>
                   <span className={styles.dashListLabel}>Deposit Amount</span>
-                  <span className={styles.dashListValue}>${deposits.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className={styles.dashListValue}>${deposits.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
                 </div>
               </div>
             </div>
@@ -312,7 +312,7 @@ const Home = () => {
                 </div>
                 <div className={styles.dashListText}>
                   <span className={styles.dashListLabel}>Withdraw Amount</span>
-                  <span className={styles.dashListValue}>${withdraws.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className={styles.dashListValue}>${withdraws.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
                 </div>
               </div>
             </div>

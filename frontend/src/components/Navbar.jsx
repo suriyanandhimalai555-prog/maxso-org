@@ -1,12 +1,36 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logoutUser } from '../features/authSlice';
+import API_URL from '../config/api';
+import { getAuthHeaders } from '../services/api';
 import styles from '../styles';
 
 const Navbar = ({ toggleSidebar }) => {
   const dispatch = useDispatch()
   const user = useSelector((state) => state.auth.user)
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [walletTotal, setWalletTotal] = useState(0);
+
+  useEffect(() => {
+    const fetchWalletTotal = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/dashboard/stats`, {
+          headers: getAuthHeaders(),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const total = (data.wallet?.levelIncome || 0) + (data.wallet?.roiIncome || 0) + (data.wallet?.directIncome || 0);
+          setWalletTotal(total);
+        }
+      } catch (err) {
+        console.error("Failed to fetch wallet total", err);
+      }
+    };
+
+    if (user) {
+      fetchWalletTotal();
+    }
+  }, [user]);
 
   const handleClick = () => {
     dispatch(logoutUser());
@@ -46,7 +70,7 @@ const Navbar = ({ toggleSidebar }) => {
         <div className={styles.navRight}>
           <div className={styles.walletBox}>
             <span className={styles.walletLabel}>Wallet Balance</span>
-            <span className={styles.walletAmount}>${parseFloat(user?.wallet_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className={styles.walletAmount}>${walletTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
 
           <div className={styles.avatarBox}>

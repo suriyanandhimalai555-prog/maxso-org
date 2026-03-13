@@ -120,30 +120,16 @@ const getDashboardStats = async (req, res, next) => {
                 if (t === 'direct_income' || t === 'Referral Bonus') stats.earnings.referralIncome += parseFloat(row.total);
             });
 
-            // 2. Wallet Balance (available income = total income - plan purchases from each wallet type)
-            // Start with total earnings per type
-            stats.wallet.levelIncome = stats.earnings.levelIncome;
-            stats.wallet.roiIncome = stats.earnings.roiIncome;
-            stats.wallet.directIncome = stats.earnings.referralIncome;
-
-            // Deduct plan purchases by deposit type
-            const planPurchaseRes = await db.query(`
-                SELECT deposit_type, SUM(amount) as total
-                FROM "UserPlan"
-                WHERE user_id = $1
-                GROUP BY deposit_type
-            `, [userId]);
-            planPurchaseRes.rows.forEach(row => {
-                if (row.deposit_type === 'level_wallet') {
-                    stats.wallet.levelIncome = Math.max(0, stats.wallet.levelIncome - parseFloat(row.total));
-                }
-                if (row.deposit_type === 'roi_wallet') {
-                    stats.wallet.roiIncome = Math.max(0, stats.wallet.roiIncome - parseFloat(row.total));
-                }
-                if (row.deposit_type === 'trust_wallet') {
-                    stats.wallet.directIncome = Math.max(0, stats.wallet.directIncome - parseFloat(row.total));
-                }
-            });
+            // 2. Wallet Balance (read directly from DB wallet columns)
+            const walletRes = await db.query(
+                'SELECT roi_wallet_balance, level_wallet_balance, direct_wallet_balance FROM "User" WHERE id = $1',
+                [userId]
+            );
+            if (walletRes.rows.length > 0) {
+                stats.wallet.roiIncome = parseFloat(walletRes.rows[0].roi_wallet_balance) || 0;
+                stats.wallet.levelIncome = parseFloat(walletRes.rows[0].level_wallet_balance) || 0;
+                stats.wallet.directIncome = parseFloat(walletRes.rows[0].direct_wallet_balance) || 0;
+            }
 
             // 3. Referrals
             if (myCode) {
