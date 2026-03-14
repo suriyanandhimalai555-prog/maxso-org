@@ -42,8 +42,9 @@ const processDailyROI = async () => {
             }
 
             // Calculate daily ROI (rounding to 4 decimal places)
+            const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
             const monthlyRoi = parseFloat(plan.amount) * (parseFloat(plan.roi) / 100);
-            const dailyRoi = round4(monthlyRoi / 30);
+            const dailyRoi = round4(monthlyRoi / daysInMonth);
 
             // Calculate max earnings
             let limitMultiplier = parseFloat(plan.ceiling_limit);
