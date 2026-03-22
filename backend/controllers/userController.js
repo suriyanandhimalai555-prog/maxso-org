@@ -480,4 +480,51 @@ const getMyNetwork = async (req, res, next) => {
   }
 };
 
-module.exports = { signupUser, loginUser, getMe, logoutUser, getAllUsers, getReferralHistory, deleteUser, loginAsUser, updateUser, updateProfile, changePassword, getMyReferrals, getMyNetwork };
+// @desc    Get level-wise earnings for Level 1 to 8
+// @route   GET /api/user/level-earnings
+const getLevelEarnings = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const query = `
+      SELECT type, SUM(amount) as total
+      FROM "Transaction"
+      WHERE user_id = $1 
+        AND (type ILIKE 'Level % Income' OR type ILIKE 'Direct Income' OR type ILIKE 'Referral Bonus')
+        AND status = 'completed'
+      GROUP BY type
+      ORDER BY type ASC
+    `;
+    const result = await db.query(query, [userId]);
+
+    // Initialize totals for Levels 1-8
+    const levelEarnings = {};
+    for (let i = 1; i <= 8; i++) {
+      levelEarnings[`Level ${i}`] = 0;
+    }
+
+    result.rows.forEach(row => {
+      const type = row.type.toLowerCase();
+      const amount = parseFloat(row.total) || 0;
+
+      if (type === 'direct income' || type === 'referral bonus' || type === 'level 1 income') {
+        levelEarnings['Level 1'] += amount;
+      } else {
+        const match = type.match(/level (\d+) income/);
+        if (match) {
+          const level = parseInt(match[1]);
+          if (level >= 1 && level <= 8) {
+            levelEarnings[`Level ${level}`] += amount;
+          }
+        }
+      }
+    });
+
+    res.status(200).json(levelEarnings);
+  } catch (error) {
+    res.status(500);
+    next(error);
+  }
+};
+
+module.exports = { signupUser, loginUser, getMe, logoutUser, getAllUsers, getReferralHistory, deleteUser, loginAsUser, updateUser, updateProfile, changePassword, getMyReferrals, getMyNetwork, getLevelEarnings };

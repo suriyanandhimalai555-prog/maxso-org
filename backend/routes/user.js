@@ -2,7 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 
 // Controller functions
-const { loginUser, signupUser, getMe, logoutUser, getAllUsers, getReferralHistory, deleteUser, loginAsUser, updateUser, updateProfile, changePassword, getMyReferrals, getMyNetwork } = require('../controllers/userController');
+const { loginUser, signupUser, getMe, logoutUser, getAllUsers, getReferralHistory, deleteUser, loginAsUser, updateUser, updateProfile, changePassword, getMyReferrals, getMyNetwork, getLevelEarnings } = require('../controllers/userController');
 const { requireAuth, requireAdmin } = require('../middleware/requireAuth');
 
 const router = express.Router();
@@ -26,6 +26,7 @@ router.put('/profile', requireAuth, updateProfile);
 router.put('/password', requireAuth, changePassword);
 router.get('/my-referrals', requireAuth, getMyReferrals);
 router.get('/my-network', requireAuth, getMyNetwork);
+router.get('/level-earnings', requireAuth, getLevelEarnings);
 
 // Admin routes
 router.get('/admin/users', requireAuth, requireAdmin, getAllUsers);

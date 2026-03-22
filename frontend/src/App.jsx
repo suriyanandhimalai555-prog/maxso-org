@@ -18,6 +18,7 @@ import Plans from './pages/Plans'
 import Portfolio from './pages/Portfolio'
 import MyNetwork from './pages/MyNetwork'
 import MyReferrals from './pages/MyReferrals'
+import LevelEarnings from './pages/LevelEarnings'
 function App() {
   const dispatch = useDispatch();
   const { user, isAuthReady } = useSelector((state) => state.auth);
@@ -75,6 +76,7 @@ function App() {
                 <Route path="/portfolio" element={<Portfolio />} />
                 <Route path="/networking/my-network" element={<MyNetwork />} />
                 <Route path="/networking/my-referrals" element={<MyReferrals />} />
+                <Route path="/networking/level-earnings" element={<LevelEarnings />} />
                 <Route path="/transactions" element={<Transactions />} />
                 <Route path="/level-config" element={<LevelConfig />} />
                 <Route path="/settings" element={<Settings />} />
