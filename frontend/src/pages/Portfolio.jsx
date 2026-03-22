@@ -118,11 +118,16 @@ const Portfolio = () => {
                                 <div className={styles.portfolioProgressWrapper}>
                                     <div className={styles.portfolioProgressHeader}>
                                         <span className={styles.portfolioProgressLabel}>Progress</span>
-                                        <span className={styles.portfolioProgressValue}>{plan.progress}%</span>
+                                        <div className="flex items-center gap-1">
+                                            {plan.progress >= 100 && <CheckCircle2 size={12} className="text-green-400" />}
+                                            <span className={`${styles.portfolioProgressValue} ${plan.progress >= 100 ? 'text-green-400' : ''}`}>
+                                                {plan.progress}%
+                                            </span>
+                                        </div>
                                     </div>
                                     <div className={styles.portfolioProgressBar}>
                                         <div
-                                            className={styles.portfolioProgressFill}
+                                            className={`${styles.portfolioProgressFill} ${plan.status === 'Completed' ? 'bg-gradient-to-r from-blue-500 to-blue-400' : ''}`}
                                             style={{ width: `${Math.min(plan.progress, 100)}%` }}
                                         ></div>
                                     </div>
@@ -144,7 +149,16 @@ const Portfolio = () => {
 
                                     <p className={styles.portfolioFooterText}>
                                         <span className={styles.portfolioDetailLabel}>Status: </span>
-                                        <span className={getStatusClass(plan.status)}>{plan.status}</span>
+                                        <span className={getStatusClass(plan.status)}>
+                                            {plan.status === 'Completed' ? (
+                                                <span className="flex items-center gap-1 uppercase tracking-wider">
+                                                    {plan.status}
+                                                    <CheckCircle2 size={14} />
+                                                </span>
+                                            ) : (
+                                                plan.status
+                                            )}
+                                        </span>
                                     </p>
                                 </div>
                             </div>

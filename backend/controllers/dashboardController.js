@@ -42,9 +42,14 @@ const getDashboardStats = async (req, res, next) => {
             `);
             walletRes.rows.forEach(row => {
                 const t = row.type.toLowerCase();
-                if (t.includes('level') && t.includes('income') && t !== 'level_income_bonus') stats.wallet.levelIncome += parseFloat(row.total);
-                else if (t.includes('roi income') || t === 'roi_income') stats.wallet.roiIncome += parseFloat(row.total);
-                else if ((t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) stats.wallet.directIncome += parseFloat(row.total);
+                // Level 1 Income from monthly job is categorized as directIncome to be consistent with direct_income
+                if (t === 'level 1 income' || (t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) {
+                    stats.wallet.directIncome += parseFloat(row.total);
+                } else if (t.includes('level') && t.includes('income') && t !== 'level_income_bonus') {
+                    stats.wallet.levelIncome += parseFloat(row.total);
+                } else if (t.includes('roi income') || t === 'roi_income') {
+                    stats.wallet.roiIncome += parseFloat(row.total);
+                }
             });
 
             // 3. Earnings (same as wallet for admin - platform-wide totals)
@@ -62,7 +67,7 @@ const getDashboardStats = async (req, res, next) => {
             const rData = refRes.rows[0];
             stats.referrals.total = parseInt(rData.total) || 0;
             stats.referrals.level1 = parseInt(rData.level1) || 0;
-            stats.referrals.earnings = stats.wallet.directIncome;
+            stats.referrals.earnings = stats.wallet.directIncome + stats.wallet.levelIncome;
 
             // 5. Deposits Tracking
             const depRes = await db.query(`
@@ -88,15 +93,22 @@ const getDashboardStats = async (req, res, next) => {
             const todayRes = await db.query(`
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
-                WHERE (type ILIKE '%roi income%' OR type = 'roi_income' OR type ILIKE '%level%income%' OR type ILIKE '%level_income%')
+                WHERE (type ILIKE '%roi income%' OR type = 'roi_income' 
+                   OR type ILIKE '%level%income%' OR type ILIKE '%level_income%'
+                   OR type ILIKE '%direct%income%' OR type ILIKE '%referral%bonus%')
                   AND status = 'completed'
-                  AND created_at::date = CURRENT_DATE
+                  AND created_at >= NOW() - INTERVAL '24 hours'
                 GROUP BY type
             `);
             todayRes.rows.forEach(row => {
                 const t = row.type.toLowerCase();
-                if (t.includes('roi income') || t === 'roi_income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
-                else if (t.includes('level') && t.includes('income')) stats.todayEarnings.levelIncome += parseFloat(row.total);
+                if (t.includes('roi income') || t === 'roi_income') {
+                    stats.todayEarnings.dailyRoi += parseFloat(row.total);
+                } else if (t.includes('level') && t.includes('income')) {
+                    stats.todayEarnings.levelIncome += parseFloat(row.total);
+                } else if ((t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) {
+                    stats.todayEarnings.levelIncome += parseFloat(row.total);
+                }
             });
 
         } else {
@@ -115,9 +127,13 @@ const getDashboardStats = async (req, res, next) => {
             `, [userId]);
             earningsRes.rows.forEach(row => {
                 const t = row.type.toLowerCase();
-                if (t.includes('level') && t.includes('income') && t !== 'level_income_bonus') stats.earnings.levelIncome += parseFloat(row.total);
-                else if (t.includes('roi income') || t === 'roi_income') stats.earnings.roiIncome += parseFloat(row.total);
-                else if ((t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) stats.earnings.referralIncome += parseFloat(row.total);
+                if (t === 'level 1 income' || (t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) {
+                    stats.earnings.referralIncome += parseFloat(row.total);
+                } else if (t.includes('level') && t.includes('income') && t !== 'level_income_bonus') {
+                    stats.earnings.levelIncome += parseFloat(row.total);
+                } else if (t.includes('roi income') || t === 'roi_income') {
+                    stats.earnings.roiIncome += parseFloat(row.total);
+                }
             });
 
             // 2. Wallet Balance (read directly from DB wallet columns)
@@ -170,15 +186,22 @@ const getDashboardStats = async (req, res, next) => {
                 SELECT type, SUM(amount) as total
                 FROM "Transaction"
                 WHERE user_id = $1
-                  AND (type ILIKE '%roi income%' OR type = 'roi_income' OR type ILIKE '%level%income%' OR type ILIKE '%level_income%')
+                  AND (type ILIKE '%roi income%' OR type = 'roi_income' 
+                   OR type ILIKE '%level%income%' OR type ILIKE '%level_income%'
+                   OR type ILIKE '%direct%income%' OR type ILIKE '%referral%bonus%')
                   AND status = 'completed'
-                  AND created_at::date = CURRENT_DATE
+                  AND created_at >= NOW() - INTERVAL '24 hours'
                 GROUP BY type
             `, [userId]);
             todayRes.rows.forEach(row => {
                 const t = row.type.toLowerCase();
-                if (t.includes('roi income') || t === 'roi_income') stats.todayEarnings.dailyRoi += parseFloat(row.total);
-                else if (t.includes('level') && t.includes('income')) stats.todayEarnings.levelIncome += parseFloat(row.total);
+                if (t.includes('roi income') || t === 'roi_income') {
+                    stats.todayEarnings.dailyRoi += parseFloat(row.total);
+                } else if (t.includes('level') && t.includes('income')) {
+                    stats.todayEarnings.levelIncome += parseFloat(row.total);
+                } else if ((t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) {
+                    stats.todayEarnings.levelIncome += parseFloat(row.total);
+                }
             });
         }
 

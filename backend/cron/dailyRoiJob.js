@@ -55,7 +55,15 @@ const processDailyROI = async () => {
             const descMatch = `UserPlan ID: ${plan.user_plan_id} |%`;
             const earnedQuery = `
                 SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction"
-                WHERE user_id = $1 AND (type ILIKE '%roi income%' OR type ILIKE '%level%income%' OR type = 'roi_income' OR type = 'level_income')
+                WHERE user_id = $1 AND (
+                    type ILIKE '%roi income%' 
+                    OR type ILIKE '%level%income%' 
+                    OR type ILIKE '%direct%income%'
+                    OR type ILIKE '%referral%bonus%'
+                    OR type = 'roi_income' 
+                    OR type = 'level_income'
+                    OR type = 'direct_income'
+                )
                 AND description LIKE $2
             `;
             const earnedRes = await db.query(earnedQuery, [plan.user_id, descMatch]);
