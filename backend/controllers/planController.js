@@ -256,23 +256,36 @@ const getMyPlans = async (req, res, next) => {
             // Description format: 'UserPlan ID: 123 | '
             const descMatch = `UserPlan ID: ${plan.id} |%`;
 
-            // Get ROI earnings mapped to this specific user plan
-            const roiRes = await db.query(
-                `SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction" 
-                 WHERE user_id = $1 AND type = 'Daily ROI Income' AND description LIKE $2`,
+            // Get ALL earnings mapped to this specific user plan (ROI, Level, Direct/Referral)
+            const incomeRes = await db.query(
+                `SELECT COALESCE(SUM(amount), 0) as total, type FROM "Transaction" 
+                 WHERE user_id = $1 AND (
+                    type ILIKE '%ROI%' OR 
+                    type ILIKE '%level%income%' OR 
+                    type ILIKE '%Direct%Income%' OR 
+                    type ILIKE '%Referral%Bonus%'
+                 ) AND description LIKE $2
+                 GROUP BY type`,
                 [userId, descMatch]
             );
 
-            // Get level income earnings mapped to this specific user plan
-            const levelRes = await db.query(
-                `SELECT COALESCE(SUM(amount), 0) as total FROM "Transaction" 
-                 WHERE user_id = $1 AND (type ILIKE '%level%income%' OR type = 'level_income') AND description LIKE $2`,
-                [userId, descMatch]
-            );
+            let roiEarnings = 0;
+            let levelEarnings = 0;
+            let directEarnings = 0;
 
-            const roiEarnings = parseFloat(roiRes.rows[0].total);
-            const levelEarnings = parseFloat(levelRes.rows[0].total);
-            const totalEarnings = roiEarnings + levelEarnings;
+            incomeRes.rows.forEach(row => {
+                const t = row.type.toLowerCase();
+                const amt = parseFloat(row.total);
+                if (t.includes('roi')) {
+                    roiEarnings += amt;
+                } else if (t.includes('level')) {
+                    levelEarnings += amt;
+                } else {
+                    directEarnings += amt;
+                }
+            });
+
+            const totalEarnings = roiEarnings + levelEarnings + directEarnings;
 
             // Ceiling limit is a plain number
             let limitMultiplier = parseFloat(plan.ceiling_limit);
@@ -289,7 +302,7 @@ const getMyPlans = async (req, res, next) => {
 
             // Determine status
             let displayStatus = 'Plan Ongoing';
-            if (plan.status === 'completed' || remainingDays === 0) {
+            if (plan.status === 'completed' || remainingDays === 0 || totalEarnings >= (ceilingAmount - 0.01)) {
                 displayStatus = 'Completed';
             } else if (plan.status === 'cancelled') {
                 displayStatus = 'Cancelled';
@@ -302,6 +315,7 @@ const getMyPlans = async (req, res, next) => {
                 depositType: plan.deposit_type,
                 roiEarnings: roiEarnings.toFixed(4),
                 levelEarnings: levelEarnings.toFixed(4),
+                directEarnings: directEarnings.toFixed(4),
                 totalEarnings: totalEarnings.toFixed(4),
                 ceilingAmount: ceilingAmount.toFixed(2),
                 progress: parseFloat(progress),

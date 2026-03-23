@@ -480,47 +480,124 @@ const getMyNetwork = async (req, res, next) => {
   }
 };
 
-// @desc    Get level-wise earnings for Level 1 to 8
+// @desc    Get detailed level-wise breakdown for Level 1 to 8
 // @route   GET /api/user/level-earnings
 const getLevelEarnings = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const userRes = await db.query('SELECT referral_code FROM "User" WHERE id = $1', [userId]);
+    if (userRes.rows.length === 0) throw new Error('User not found');
+    const myCode = userRes.rows[0].referral_code;
 
-    const query = `
-      SELECT type, SUM(amount) as total
-      FROM "Transaction"
-      WHERE user_id = $1 
-        AND (type ILIKE 'Level % Income' OR type ILIKE 'Direct Income' OR type ILIKE 'Referral Bonus')
-        AND status = 'completed'
-      GROUP BY type
-      ORDER BY type ASC
-    `;
-    const result = await db.query(query, [userId]);
-
-    // Initialize totals for Levels 1-8
-    const levelEarnings = {};
-    for (let i = 1; i <= 8; i++) {
-      levelEarnings[`Level ${i}`] = 0;
-    }
-
-    result.rows.forEach(row => {
-      const type = row.type.toLowerCase();
-      const amount = parseFloat(row.total) || 0;
-
-      if (type === 'direct income' || type === 'referral bonus' || type === 'level 1 income') {
-        levelEarnings['Level 1'] += amount;
-      } else {
-        const match = type.match(/level (\d+) income/);
-        if (match) {
-          const level = parseInt(match[1]);
-          if (level >= 1 && level <= 8) {
-            levelEarnings[`Level ${level}`] += amount;
-          }
-        }
-      }
+    // 1. Fetch all users and their total active/completed deposits
+    const userDepositsRes = await db.query(`
+      SELECT u.id, u.referral_code, u.name, COALESCE(SUM(up.amount), 0) as total_deposit
+      FROM "User" u
+      LEFT JOIN "UserPlan" up ON u.id = up.user_id AND up.status IN ('active', 'completed')
+      GROUP BY u.id, u.referral_code, u.name
+    `);
+    const usersMap = {}; // referral_code -> { id, name, deposit }
+    const idToCode = {}; // id -> referral_code
+    userDepositsRes.rows.forEach(row => {
+      usersMap[row.referral_code] = {
+        id: row.id,
+        name: row.name,
+        deposit: parseFloat(row.total_deposit)
+      };
+      idToCode[row.id] = row.referral_code;
     });
 
-    res.status(200).json(levelEarnings);
+    // 2. Fetch all direct referral links (Level 1)
+    const linksRes = await db.query('SELECT referrer_code, referred_code FROM "Referral" WHERE level = 1');
+    const childrenMap = {}; // referrer_code -> [referred_codes]
+    linksRes.rows.forEach(row => {
+      if (!childrenMap[row.referrer_code]) childrenMap[row.referrer_code] = [];
+      childrenMap[row.referrer_code].push(row.referred_code);
+    });
+
+    // 3. Fetch earnings attributed to reference_user_id for this user
+    // ENSURE THIS MATCHES Categorization in dashboardController.js
+    const earningsRes = await db.query(`
+      SELECT reference_user_id, SUM(amount) as total, type
+      FROM "Transaction"
+      WHERE user_id = $1 AND reference_user_id IS NOT NULL 
+        AND (
+            type ILIKE '%level%income%' OR 
+            type ILIKE '%level_income%' OR 
+            type ILIKE '%direct%income%' OR 
+            type ILIKE '%referral%bonus%'
+        )
+        AND status = 'completed'
+      GROUP BY reference_user_id, type
+    `, [userId]);
+    const earningsByRef = {}; // reference_user_id -> total_earned
+    earningsRes.rows.forEach(row => {
+      const refId = row.reference_user_id;
+      if (!earningsByRef[refId]) earningsByRef[refId] = 0;
+      earningsByRef[refId] += parseFloat(row.total);
+    });
+
+    // 4. Helper to calculate total business recursively (cached)
+    // IMPORTANT: "Total Business" for each person is THEIR OWN deposit + THEIR DOWNLINE.
+    const businessCache = {};
+    const calculateBusiness = (refCode, visited = new Set()) => {
+      if (visited.has(refCode)) return 0; // Prevent circularity
+      if (businessCache[refCode] !== undefined) return businessCache[refCode];
+      
+      visited.add(refCode);
+      const user = usersMap[refCode];
+      let business = user ? user.deposit : 0;
+      
+      const children = childrenMap[refCode] || [];
+      for (const childCode of children) {
+        business += calculateBusiness(childCode, visited);
+      }
+      
+      businessCache[refCode] = Math.round(business * 100) / 100;
+      return business;
+    };
+
+    // 5. Build the breakdown for Level 1 to 8
+    const breakdown = {};
+    for (let i = 1; i <= 8; i++) {
+        breakdown[i] = {
+            members: [],
+            subtotals: { deposit: 0, business: 0, earnings: 0 }
+        };
+    }
+
+    const traverse = (refCode, currentLevel) => {
+      if (currentLevel > 8) return;
+
+      const children = childrenMap[refCode] || [];
+      for (const childCode of children) {
+        const userData = usersMap[childCode];
+        if (userData) {
+          const business = calculateBusiness(childCode);
+          const earnings = earningsByRef[userData.id] || 0;
+          
+          const member = {
+            name: userData.name,
+            referralCode: childCode,
+            deposit: Math.round(userData.deposit * 100) / 100,
+            business: Math.round(business * 100) / 100,
+            earnings: Math.round(earnings * 100) / 100
+          };
+
+          breakdown[currentLevel].members.push(member);
+          breakdown[currentLevel].subtotals.deposit = Math.round((breakdown[currentLevel].subtotals.deposit + member.deposit) * 100) / 100;
+          breakdown[currentLevel].subtotals.business = Math.round((breakdown[currentLevel].subtotals.business + member.business) * 100) / 100;
+          breakdown[currentLevel].subtotals.earnings = Math.round((breakdown[currentLevel].subtotals.earnings + member.earnings) * 100) / 100;
+
+          // Continue to next level
+          traverse(childCode, currentLevel + 1);
+        }
+      }
+    };
+
+    traverse(myCode, 1);
+
+    res.status(200).json(breakdown);
   } catch (error) {
     res.status(500);
     next(error);

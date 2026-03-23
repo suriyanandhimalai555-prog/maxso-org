@@ -1,92 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import PageHeader from '../components/common/PageHeader';
-import { networkingStyles as ns } from '../styles';
+import { networkingStyles as ns, transactionsStyles as ts } from '../styles';
+import { ChevronDown, ChevronUp, Users, DollarSign, Briefcase, TrendingUp } from 'lucide-react';
 
 const LevelEarnings = () => {
-    const [earnings, setEarnings] = useState(null);
+    const [breakdown, setBreakdown] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [expandedLevel, setExpandedLevel] = useState(1);
 
     useEffect(() => {
-        const fetchEarnings = async () => {
+        const fetchBreakdown = async () => {
             try {
                 const data = await api.get('/api/user/level-earnings');
-                setEarnings(data);
+                setBreakdown(data);
             } catch (err) {
-                console.error('Failed to fetch level earnings', err);
+                console.error('Failed to fetch level breakdown', err);
             } finally {
                 setLoading(false);
             }
         };
-        fetchEarnings();
+        fetchBreakdown();
     }, []);
 
-    const levels = Array.from({ length: 8 }, (_, i) => `Level ${i + 1}`);
+    const toggleLevel = (level) => {
+        setExpandedLevel(expandedLevel === level ? null : level);
+    };
 
     if (loading) {
         return (
             <div style={ns.networkContainer}>
-                <PageHeader title="Level Earnings" />
-                <div style={ns.networkLoading}>Loading earnings...</div>
+                <PageHeader title="Level Earnings Breakdown" />
+                <div style={ns.networkLoading}>Loading detailed breakdown...</div>
             </div>
         );
     }
 
     return (
         <div style={ns.networkContainer}>
-            <PageHeader title="Level Earnings" />
-            
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                gap: '20px',
-                marginTop: '20px'
-            }}>
-                {levels.map((level) => (
-                    <div key={level} style={{
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        backdropFilter: 'blur(10px)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: '16px',
-                        padding: '24px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        transition: 'transform 0.3s ease, border-color 0.3s ease',
-                        cursor: 'default',
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-5px)';
-                        e.currentTarget.style.borderColor = 'rgba(167, 139, 250, 0.4)';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-                    }}
-                    >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: '500' }}>{level}</span>
-                            <div style={{ 
-                                width: '32px', 
-                                height: '32px', 
-                                borderRadius: '8px', 
-                                background: 'rgba(167, 139, 250, 0.1)', 
-                                display: 'flex', 
-                                justifyContent: 'center', 
-                                alignItems: 'center' 
-                            }}>
-                                <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                                </svg>
-                            </div>
-                        </div>
-                        <div>
-                            <span style={{ fontSize: '28px', fontWeight: '700', color: '#fff' }}>
-                                ₹{earnings?.[level]?.toLocaleString() || '0.00'}
-                            </span>
-                            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Total Cumulative Earnings</p>
-                        </div>
-                    </div>
+            <PageHeader title="Level Earnings Breakdown" />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '24px' }}>
+                {Object.keys(breakdown || {}).map((level) => (
+                    <LevelAccordion 
+                        key={level}
+                        level={level}
+                        data={breakdown[level]}
+                        isOpen={expandedLevel === parseInt(level)}
+                        onToggle={() => toggleLevel(parseInt(level))}
+                    />
                 ))}
             </div>
 
@@ -97,13 +59,121 @@ const LevelEarnings = () => {
                 borderRadius: '16px',
                 border: '1px dashed rgba(167, 139, 250, 0.2)'
             }}>
-                <h3 style={{ color: '#a78bfa', fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>Earning Insights</h3>
+                <h3 style={{ color: '#a78bfa', fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>Understanding Your Network</h3>
                 <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6' }}>
-                    This dashboard provides a breakdown of your earnings across 8 levels of your referral network. 
-                    Level 1 includes your direct referrals, while Levels 2-8 represent the downline generated by your network.
-                    Earnings are credited automatically based on the active plans within your organization.
+                    <strong>Deposit Amount:</strong> The total primary investment made by each person at this level.<br/>
+                    <strong>Total Business:</strong> The cumulative business volume generated by a person, including their own deposit and all deposits from their entire downline.<br/>
+                    <strong>Earnings:</strong> The total commission and bonuses you have earned from this specific member's activity.
                 </p>
             </div>
+        </div>
+    );
+};
+
+const LevelAccordion = ({ level, data, isOpen, onToggle }) => {
+    const { members, subtotals } = data;
+    
+    return (
+        <div style={{
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            transition: 'all 0.3s ease'
+        }}>
+            {/* Header */}
+            <div 
+                onClick={onToggle}
+                style={{
+                    padding: '20px 24px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    background: isOpen ? 'rgba(167, 139, 250, 0.05)' : 'transparent',
+                    borderBottom: isOpen ? '1px solid rgba(255, 255, 255, 0.1)' : 'none'
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '10px',
+                        background: 'rgba(167, 139, 250, 0.1)',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        color: '#a78bfa'
+                    }}>
+                        <TrendingUp size={20} />
+                    </div>
+                    <div>
+                        <h4 style={{ color: '#fff', fontSize: '16px', fontWeight: '600' }}>Level {level}</h4>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>{members.length} Members</span>
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
+                    <div className="hidden md:flex flex-col items-end">
+                        <span style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase' }}>Level Earnings</span>
+                        <span style={{ color: '#10b981', fontWeight: '700' }}>${subtotals.earnings.toLocaleString()}</span>
+                    </div>
+                    {isOpen ? <ChevronUp size={20} color="#64748b" /> : <ChevronDown size={20} color="#64748b" />}
+                </div>
+            </div>
+
+            {/* Content */}
+            {isOpen && (
+                <div style={{ padding: '0px' }}>
+                    <div className={ts.transactionTableWrapper} style={{ border: 'none', borderRadius: '0' }}>
+                        <table className={ts.transactionTable}>
+                            <thead className={ts.transactionThead} style={{ background: 'rgba(255, 255, 255, 0.03)' }}>
+                                <tr>
+                                    <th className={ts.transactionTh}>Name / Code</th>
+                                    <th className={ts.transactionTh}>Deposit</th>
+                                    <th className={ts.transactionTh}>Total Business</th>
+                                    <th className={ts.transactionTh}>Your Earning</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {members.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="4" className={ts.transactionNoData}>No members found at this level</td>
+                                    </tr>
+                                ) : (
+                                    members.map((member, idx) => (
+                                        <tr key={idx} className={ts.transactionTr}>
+                                            <td className={ts.transactionTdBold}>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span>{member.name}</span>
+                                                    <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 'normal' }}>{member.referralCode}</span>
+                                                </div>
+                                            </td>
+                                            <td className={ts.transactionTd}>${member.deposit.toLocaleString()}</td>
+                                            <td className={ts.transactionTd}>
+                                                <span style={{ color: '#a78bfa', fontWeight: '500' }}>${member.business.toLocaleString()}</span>
+                                            </td>
+                                            <td className={ts.transactionTd}>
+                                                <span style={{ color: '#10b981', fontWeight: '600' }}>${member.earnings.toLocaleString()}</span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                            {members.length > 0 && (
+                                <tfoot style={{ background: 'rgba(167, 139, 250, 0.03)', borderTop: '2px solid rgba(255, 255, 255, 0.1)' }}>
+                                    <tr>
+                                        <td className={ts.transactionTdBold} style={{ color: '#a78bfa' }}>LEVEL {level} TOTAL</td>
+                                        <td className={ts.transactionTdBold}>${subtotals.deposit.toLocaleString()}</td>
+                                        <td className={ts.transactionTdBold} style={{ color: '#a78bfa' }}>${subtotals.business.toLocaleString()}</td>
+                                        <td className={ts.transactionTdBold} style={{ color: '#10b981' }}>${subtotals.earnings.toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
+                            )}
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -105,7 +105,7 @@ const Portfolio = () => {
                                 <p className={styles.portfolioDetail}>
                                     <span className={styles.portfolioDetailLabel}>TotalEarnings: </span>
                                     <span className={styles.portfolioDetailGreen}>
-                                        ${plan.totalEarnings} ({plan.roiEarnings}+{plan.levelEarnings})
+                                        ${plan.totalEarnings} ({plan.roiEarnings}+{plan.levelEarnings}+{plan.directEarnings})
                                     </span>
                                 </p>
 
