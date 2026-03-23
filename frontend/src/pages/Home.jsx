@@ -166,7 +166,7 @@ const Home = () => {
         <div className={styles.dashWalletContainer}>
           <div className={styles.dashWalletCard}>
             <div className={styles.dashWalletHeader}>
-              <span className={styles.dashWalletLabel}>Level Income</span>
+              <span className={styles.dashWalletLabel}>Level Income (All Time)</span>
               <ChartUpIcon />
             </div>
             <span className={styles.dashWalletValue}>${isLoading ? '...' : wallet.levelIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>

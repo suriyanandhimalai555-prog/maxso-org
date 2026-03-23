@@ -54,8 +54,7 @@ const LevelEarnings = () => {
                 gap: '16px'
             }}>
                 <div>
-                    <h3 style={{ color: '#10b981', fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Total Level Income (All-Time)</h3>
-                    <p style={{ color: '#94a3b8', fontSize: '14px' }}>This sum matches your Level Wallet Balance</p>
+                    <h3 style={{ color: '#10b981', fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Total Level Income (From March)</h3>
                 </div>
                 <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#10b981' }}>
                     ${calculateGrandTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
