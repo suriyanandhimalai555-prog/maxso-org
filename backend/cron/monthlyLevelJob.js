@@ -127,10 +127,9 @@ const processMonthlyLevelIncome = async () => {
                         Math.min(remainingIncomeToDistribute, remainingCap)
                     );
 
-                    // Credit wallet
-                    const walletColumn = parseInt(upline.level) === 1 ? 'direct_wallet_balance' : 'level_wallet_balance';
+                    // All level income (Level 1, 2, 3...) goes to level_wallet_balance
                     await db.query(
-                        `UPDATE "User" SET ${walletColumn} = ${walletColumn} + $1 WHERE id = $2`,
+                        `UPDATE "User" SET level_wallet_balance = level_wallet_balance + $1 WHERE id = $2`,
                         [creditAmount, upline.upline_id]
                     );
 

@@ -515,26 +515,11 @@ const getLevelEarnings = async (req, res, next) => {
       childrenMap[row.referrer_code].push(row.referred_code);
     });
 
-    // 3. Fetch earnings attributed to reference_user_id for this user
-    // ENSURE THIS MATCHES Categorization in dashboardController.js
-    const earningsRes = await db.query(`
-      SELECT reference_user_id, SUM(amount) as total, type
-      FROM "Transaction"
-      WHERE user_id = $1 AND reference_user_id IS NOT NULL 
-        AND (
-            type ILIKE '%level%income%' OR 
-            type ILIKE '%level_income%' OR 
-            type ILIKE '%direct%income%' OR 
-            type ILIKE '%referral%bonus%'
-        )
-        AND status = 'completed'
-      GROUP BY reference_user_id, type
-    `, [userId]);
-    const earningsByRef = {}; // reference_user_id -> total_earned
-    earningsRes.rows.forEach(row => {
-      const refId = row.reference_user_id;
-      if (!earningsByRef[refId]) earningsByRef[refId] = 0;
-      earningsByRef[refId] += parseFloat(row.total);
+    // 3. Fetch LevelConfig to calculate expected monthly earnings based on current deposit percentage
+    const levelConfigRes = await db.query('SELECT level, percentage FROM "LevelConfig" WHERE status = $1', ['active']);
+    const levelPercentages = {};
+    levelConfigRes.rows.forEach(row => {
+        levelPercentages[row.level] = parseFloat(row.percentage);
     });
 
     // 4. Helper to calculate total business recursively (cached)
@@ -574,14 +559,15 @@ const getLevelEarnings = async (req, res, next) => {
         const userData = usersMap[childCode];
         if (userData) {
           const business = calculateBusiness(childCode);
-          const earnings = earningsByRef[userData.id] || 0;
+          const levelPercentage = levelPercentages[currentLevel] || 0;
+          const expectedMonthlyEarning = (userData.deposit * levelPercentage) / 100;
           
           const member = {
             name: userData.name,
             referralCode: childCode,
             deposit: Math.round(userData.deposit * 100) / 100,
             business: Math.round(business * 100) / 100,
-            earnings: Math.round(earnings * 100) / 100
+            earnings: Math.round(expectedMonthlyEarning * 100) / 100
           };
 
           breakdown[currentLevel].members.push(member);
