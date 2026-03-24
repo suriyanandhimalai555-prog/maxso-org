@@ -12,13 +12,19 @@ const createToken = (id) => {
 const generateReferralCode = () => 'MAX' + crypto.randomBytes(4).toString('hex').toUpperCase();
 
 const signupUser = async (req, res, next) => {
-  const { name, email, password, referred_by_code } = req.body;
+  const { name, email, password } = req.body;
+  let { referred_by_code } = req.body;
+  
+  const client = await db.pool.connect();
+
   try {
     if (!email || !password || !name) throw Error('All fields must be filled');
     if (!validator.isEmail(email)) throw Error('Email not valid');
     if (!validator.isStrongPassword(password)) throw Error('Password not strong enough');
 
-    const userCheck = await db.query('SELECT * FROM "User" WHERE email = $1', [email]);
+    await client.query('BEGIN');
+
+    const userCheck = await client.query('SELECT * FROM "User" WHERE email = $1', [email]);
     if (userCheck.rows.length > 0) throw Error('Email already in use');
 
     const salt = await bcrypt.genSalt(10);
@@ -28,67 +34,81 @@ const signupUser = async (req, res, next) => {
     let referred_by_id = null;
 
     if (referred_by_code) {
-      const referrerRes = await db.query('SELECT id, referral_code FROM "User" WHERE referral_code = $1', [referred_by_code]);
-      if (referrerRes.rows.length > 0) {
-        referred_by_id = referrerRes.rows[0].id;
+      referred_by_code = referred_by_code.trim().toUpperCase();
+      const referrerRes = await client.query('SELECT id, referral_code FROM "User" WHERE UPPER(TRIM(referral_code)) = $1', [referred_by_code]);
+      
+      if (referrerRes.rows.length === 0) {
+        throw Error('Invalid referral code');
+      }
+      
+      referred_by_id = referrerRes.rows[0].id;
+      const actualReferrerCode = referrerRes.rows[0].referral_code;
 
-        let currentLevel = 1;
-        let currentReferrerCode = referred_by_code;
-        const maxLevels = 10;
+      // 1. Insert the new user first
+      const result = await client.query(
+        'INSERT INTO "User" (name, email, password, referral_code, referred_by, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, role',
+        [name, email, hash, referral_code, referred_by_id, 'user']
+      );
+      const user = result.rows[0];
 
-        // Traverse up the referral tree
-        while (currentReferrerCode && currentLevel <= maxLevels) {
-          // Increment the referral count for the direct referrer only (Level 1)
-          if (currentLevel === 1) {
-            await db.query('UPDATE "User" SET referral_count = referral_count + 1 WHERE referral_code = $1', [currentReferrerCode]);
-          }
+      // 2. Traverse up and create referral records
+      let currentLevel = 1;
+      let currentReferrerCode = actualReferrerCode;
+      const maxLevels = 10;
 
-          // Log in the Referral tracking table
-          await db.query(
-            'INSERT INTO "Referral" (referrer_code, referred_code, level) VALUES ($1, $2, $3)',
-            [currentReferrerCode, referral_code, currentLevel]
-          );
+      while (currentReferrerCode && currentLevel <= maxLevels) {
+        if (currentLevel === 1) {
+          await client.query('UPDATE "User" SET referral_count = referral_count + 1 WHERE referral_code = $1', [currentReferrerCode]);
+        }
 
-          // Find the parent of the current referrer (i.e., who referred them)
-          const parentRes = await db.query(
-            'SELECT u2.referral_code FROM "User" u1 JOIN "User" u2 ON u1.referred_by = u2.id WHERE u1.referral_code = $1',
-            [currentReferrerCode]
-          );
+        await client.query(
+          'INSERT INTO "Referral" (referrer_code, referred_code, level) VALUES ($1, $2, $3)',
+          [currentReferrerCode, referral_code, currentLevel]
+        );
 
-          if (parentRes.rows.length > 0 && parentRes.rows[0].referral_code) {
-            currentReferrerCode = parentRes.rows[0].referral_code;
-            currentLevel++;
-          } else {
-            break; // No more ancestors
-          }
+        const parentRes = await client.query(
+          'SELECT u2.referral_code FROM "User" u1 JOIN "User" u2 ON u1.referred_by = u2.id WHERE UPPER(TRIM(u1.referral_code)) = $1',
+          [currentReferrerCode]
+        );
+
+        if (parentRes.rows.length > 0 && parentRes.rows[0].referral_code) {
+          currentReferrerCode = parentRes.rows[0].referral_code;
+          currentLevel++;
+        } else {
+          break;
         }
       }
+
+      await client.query('COMMIT');
+      const token = createToken(user.id);
+      res.status(200).json({
+        token, email, name, role: user.role, referral_code,
+        phone_number: null, wallet_address: null, wallet_balance: 0,
+        country: null, created_at: new Date().toISOString(), referral_count: 0
+      });
+
+    } else {
+      // No referral code provided, just create the user
+      const result = await client.query(
+        'INSERT INTO "User" (name, email, password, referral_code, referred_by, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, role',
+        [name, email, hash, referral_code, null, 'user']
+      );
+      const user = result.rows[0];
+      await client.query('COMMIT');
+      
+      const token = createToken(user.id);
+      res.status(200).json({
+        token, email, name, role: user.role, referral_code,
+        phone_number: null, wallet_address: null, wallet_balance: 0,
+        country: null, created_at: new Date().toISOString(), referral_count: 0
+      });
     }
-
-    const result = await db.query(
-      'INSERT INTO "User" (name, email, password, referral_code, referred_by, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, role',
-      [name, email, hash, referral_code, referred_by_id, 'user']
-    );
-
-    const user = result.rows[0];
-    const token = createToken(user.id);
-
-    res.status(200).json({
-      token,
-      email,
-      name,
-      role: user.role,
-      referral_code,
-      phone_number: null,
-      wallet_address: null,
-      wallet_balance: 0,
-      country: null,
-      created_at: new Date().toISOString(),
-      referral_count: 0
-    });
   } catch (error) {
+    if (client) await client.query('ROLLBACK');
     res.status(400);
     next(error);
+  } finally {
+    client.release();
   }
 };
 
@@ -224,16 +244,40 @@ const getReferralHistory = async (req, res, next) => {
 
 const deleteUser = async (req, res, next) => {
   const { id } = req.params;
+  const client = await db.pool.connect();
   try {
     // Basic protection to prevent admin from deleting themselves
     if (req.user.id === parseInt(id, 10)) {
       throw new Error("You cannot delete your own admin account.");
     }
-    await db.query('DELETE FROM "User" WHERE id = $1', [id]);
-    res.status(200).json({ message: 'User deleted successfully' });
+
+    await client.query('BEGIN');
+
+    // 1. Get referral code to clean up Referral table
+    const userRes = await client.query('SELECT referral_code FROM "User" WHERE id = $1', [id]);
+    if (userRes.rows.length > 0) {
+      const referralCode = userRes.rows[0].referral_code;
+      if (referralCode) {
+        await client.query('DELETE FROM "Referral" WHERE referrer_code = $1 OR referred_code = $1', [referralCode]);
+      }
+    }
+
+    // 2. Delete related data from other tables to avoid FK violations and orphans
+    await client.query('DELETE FROM "Transaction" WHERE user_id = $1 OR reference_user_id = $1', [id]);
+    await client.query('DELETE FROM "UserPlan" WHERE user_id = $1', [id]);
+
+    // 3. Delete the user
+    const deleteRes = await client.query('DELETE FROM "User" WHERE id = $1', [id]);
+    if (deleteRes.rowCount === 0) throw new Error('User not found');
+
+    await client.query('COMMIT');
+    res.status(200).json({ message: 'User and all associated data deleted successfully' });
   } catch (error) {
+    if (client) await client.query('ROLLBACK');
     res.status(400);
     next(error);
+  } finally {
+    client.release();
   }
 };
 
