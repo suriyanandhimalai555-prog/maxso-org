@@ -412,6 +412,121 @@ const rejectWithdrawal = async (req, res, next) => {
     }
 };
 
+// REQUEST DEPOSIT (USER)
+const requestDeposit = async (req, res, next) => {
+    const { amount, transactionHash } = req.body;
+    const userId = req.user.id;
+
+    try {
+        if (!amount || amount <= 0) throw new Error('Positive amount is required');
+
+        await db.query('BEGIN');
+
+        // Create pending transaction
+        const result = await db.query(
+            'INSERT INTO "Transaction" (user_id, type, amount, status, transaction_hash, reference_user_id, description) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [userId, 'Deposit Request', amount, 'pending', transactionHash, 59, 'User deposit request']
+        );
+
+        await db.query('COMMIT');
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        await db.query('ROLLBACK');
+        res.status(400).json({ message: error.message });
+    }
+};
+
+// APPROVE DEPOSIT (ADMIN)
+const approveDeposit = async (req, res, next) => {
+    const { id } = req.params;
+
+    try {
+        await db.query('BEGIN');
+
+        // 1. Find the pending deposit
+        const transRes = await db.query('SELECT * FROM "Transaction" WHERE id = $1 AND status = $2 FOR UPDATE', [id, 'pending']);
+        if (transRes.rows.length === 0) throw new Error('Pending deposit not found / already processed');
+        const trans = transRes.rows[0];
+
+        if (!trans.type.includes('Deposit')) throw new Error('Transaction is not a deposit');
+
+        const userId = trans.user_id;
+        const amount = trans.amount;
+
+        // 2. Update user balance
+        await db.query('UPDATE "User" SET wallet_balance = wallet_balance + $1 WHERE id = $2', [amount, userId]);
+
+        // 3. Mark transaction as completed
+        await db.query(
+            'UPDATE "Transaction" SET status = $1, type = $2 WHERE id = $3',
+            ['completed', 'Deposit', id]
+        );
+
+        // 4. --- LEVEL COMMISSION DISTRIBUTION ---
+        // Fetch user code to find referrers
+        const userRes = await db.query('SELECT referral_code FROM "User" WHERE id = $1', [userId]);
+        const userCode = userRes.rows[0].referral_code;
+
+        const configQuery = `
+            SELECT 
+                r.referrer_code, 
+                r.level, 
+                c.percentage,
+                u.id as referrer_id
+            FROM "Referral" r
+            JOIN "LevelConfig" c ON r.level = c.level
+            JOIN "User" u ON r.referrer_code = u.referral_code
+            WHERE r.referred_code = $1 AND c.status = 'active';
+        `;
+        const commRes = await db.query(configQuery, [userCode]);
+
+        for (const comm of commRes.rows) {
+            const commAmount = Math.round(((parseFloat(amount) * parseFloat(comm.percentage)) / 100) * 10000) / 10000;
+            if (commAmount > 0) {
+                const incomeType = parseInt(comm.level) === 1 ? 'direct_income' : 'level_income';
+                const walletColumn = 'level_wallet_balance';
+
+                await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} + $1 WHERE id = $2`, [commAmount, comm.referrer_id]);
+                await db.query(
+                    'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
+                    [comm.referrer_id, incomeType, commAmount, 'completed', userId]
+                );
+            }
+        }
+        // --- END COMMISSION ---
+
+        await db.query('COMMIT');
+        res.status(200).json({ message: 'Deposit approved and credited' });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        res.status(400).json({ message: error.message });
+    }
+};
+
+// REJECT DEPOSIT (ADMIN)
+const rejectDeposit = async (req, res, next) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    try {
+        await db.query('BEGIN');
+
+        const transRes = await db.query('SELECT * FROM "Transaction" WHERE id = $1 AND status = $2 FOR UPDATE', [id, 'pending']);
+        if (transRes.rows.length === 0) throw new Error('Pending deposit not found / already processed');
+
+        await db.query(
+            'UPDATE "Transaction" SET status = $1, description = $2 WHERE id = $3',
+            ['rejected', `Rejected: ${reason || 'No reason provided'}`, id]
+        );
+
+        await db.query('COMMIT');
+        res.status(200).json({ message: 'Deposit rejected' });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        res.status(400).json({ message: error.message });
+    }
+};
+
 module.exports = {
     createDeposit,
     createWithdraw,
@@ -421,5 +536,8 @@ module.exports = {
     requestWithdrawal,
     getPendingWithdrawals,
     approveWithdrawal,
-    rejectWithdrawal
+    rejectWithdrawal,
+    requestDeposit,
+    approveDeposit,
+    rejectDeposit
 };

@@ -158,9 +158,18 @@ const Transactions = () => {
         e.preventDefault();
         setTxSubmitting(true);
         try {
-            const endpoint = actionType === 'approve'
-                ? `${API_URL}/api/transactions/admin/approve/${actionTx.id}`
-                : `${API_URL}/api/transactions/admin/reject/${actionTx.id}`;
+            const isWithdrawal = actionTx.type.toLowerCase().includes('withdraw') || actionTx.type.toLowerCase().includes('w/d');
+            
+            let endpoint;
+            if (isWithdrawal) {
+                endpoint = actionType === 'approve'
+                    ? `${API_URL}/api/transactions/admin/approve/${actionTx.id}`
+                    : `${API_URL}/api/transactions/admin/reject/${actionTx.id}`;
+            } else {
+                endpoint = actionType === 'approve'
+                    ? `${API_URL}/api/transactions/admin/approve-deposit/${actionTx.id}`
+                    : `${API_URL}/api/transactions/admin/reject-deposit/${actionTx.id}`;
+            }
             
             const body = actionType === 'approve'
                 ? { transactionHash: adminInputValue }
@@ -202,11 +211,14 @@ const Transactions = () => {
             const amount = parseFloat(txAmount);
             if (isNaN(amount) || amount <= 0) throw new Error('Please enter a valid amount');
 
-            // For regular users, withdrawals are always requests
+            // For regular users, withdrawals and deposits are requests
             const isWithdrawRequest = user.role !== 'admin' && txType === 'withdraw';
-            const endpoint = isWithdrawRequest 
-                ? `${API_URL}/api/transactions/withdraw-request`
-                : `${API_URL}/api/transactions/${txType}`;
+            const isDepositRequest = user.role !== 'admin' && txType === 'deposit';
+
+            let endpoint;
+            if (isWithdrawRequest) endpoint = `${API_URL}/api/transactions/withdraw-request`;
+            else if (isDepositRequest) endpoint = `${API_URL}/api/transactions/request-deposit`;
+            else endpoint = `${API_URL}/api/transactions/${txType}`;
 
             const payload = { amount };
 
@@ -226,8 +238,13 @@ const Transactions = () => {
                 payload.receiverCode = txReceiverCode.trim();
             } else {
                 payload.userCode = txUserCode.trim();
-                if (txType === 'deposit' && txSenderCode.trim() !== '') {
-                    payload.senderCode = txSenderCode.trim();
+                if (txType === 'deposit') {
+                    if (user.role === 'admin' && txSenderCode.trim() !== '') {
+                        payload.senderCode = txSenderCode.trim();
+                    } else if (user.role !== 'admin') {
+                        // For regular users requesting deposit
+                        payload.transactionHash = txSenderCode.trim(); // Reuse this field or use txUserCode
+                    }
                 }
             }
 
@@ -330,6 +347,7 @@ const Transactions = () => {
     if (error) return <div className={styles.transactionContainer}><h2 className="text-red-500">{error}</h2></div>;
 
     const isWithdrawRequestModal = user?.role !== 'admin' && txType === 'withdraw';
+    const isDepositRequestModal = user?.role !== 'admin' && txType === 'deposit';
 
     return (
         <div className={styles.transactionContainer}>
@@ -374,7 +392,7 @@ const Transactions = () => {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {user && (user.role === 'admin' || activeTab === 'withdraw') && (
+                    {user && (user.role === 'admin' || activeTab === 'withdraw' || activeTab === 'deposit') && (
                         <button
                             className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
                             onClick={() => { 
@@ -385,7 +403,8 @@ const Transactions = () => {
                                 setIsModalOpen(true); 
                             }}
                         >
-                            {user.role === 'admin' ? `+ New ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}` : 'Withdraw Funds'}
+                            {user.role === 'admin' ? `+ New ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}` : 
+                             activeTab === 'withdraw' ? 'Withdraw Funds' : 'Deposit Funds'}
                         </button>
                     )}
                 </div>
@@ -402,6 +421,7 @@ const Transactions = () => {
                                     <th className={styles.transactionTh}>Transaction Hash</th>
                                     <th className={styles.transactionTh}>Plan Name</th>
                                     <th className={styles.transactionTh}>Amount</th>
+                                    <th className={styles.transactionTh}>Status</th>
                                     <th className={styles.transactionTh}>Created At</th>
                                     <th className={styles.transactionTh}>Actions</th>
                                 </>
@@ -455,14 +475,40 @@ const Transactions = () => {
                                             </span>
                                         </td>
                                         <td className={styles.transactionTd}>
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                                                item.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
+                                                item.status === 'pending' ? 'bg-amber-500/10 text-amber-400' :
+                                                'bg-red-500/10 text-red-400'
+                                            }`}>
+                                                {item.status || 'completed'}
+                                            </span>
+                                        </td>
+                                        <td className={styles.transactionTd}>
                                             {formatDate(item.created_at)}
                                         </td>
                                         <td className={styles.transactionActionCell}>
-                                            <button className={styles.transactionActionButton}>
-                                                <svg className={styles.transactionActionIcon} fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
-                                                </svg>
-                                            </button>
+                                            {user?.role === 'admin' && item.status === 'pending' ? (
+                                                <div className="flex gap-2">
+                                                    <button 
+                                                        onClick={() => { setActionTx(item); setActionType('approve'); setIsAdminActionModalOpen(true); }}
+                                                        className="px-2 py-1 bg-emerald-600 text-white text-[10px] uppercase font-bold rounded hover:bg-emerald-500 transition shadow-sm"
+                                                    >
+                                                        Approve
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => { setActionTx(item); setActionType('reject'); setIsAdminActionModalOpen(true); }}
+                                                        className="px-2 py-1 bg-red-600 text-white text-[10px] uppercase font-bold rounded hover:bg-red-500 transition shadow-sm"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button className={styles.transactionActionButton}>
+                                                    <svg className={styles.transactionActionIcon} fill="currentColor" viewBox="0 0 20 20">
+                                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                                    </svg>
+                                                </button>
+                                            )}
                                         </td>
                                     </>
                                 )}
@@ -630,7 +676,7 @@ const Transactions = () => {
                 <div style={inlineStyles.modalOverlay}>
                     <div style={inlineStyles.modalContent}>
                         <h3 className="text-xl font-bold mb-4 text-white">
-                            {isWithdrawRequestModal ? 'Withdraw Funds' : `Create Manual ${txType.charAt(0).toUpperCase() + txType.slice(1)}`}
+                            {isWithdrawRequestModal ? 'Withdraw Funds' : isDepositRequestModal ? 'Request Deposit' : `Create Manual ${txType.charAt(0).toUpperCase() + txType.slice(1)}`}
                         </h3>
                         <form onSubmit={handleTxSubmit}>
                             {user.role === 'admin' && (
@@ -678,15 +724,18 @@ const Transactions = () => {
                                 </div>
                             )}
 
-                            {txType === 'deposit' && user?.role === 'admin' && (
+                            {(txType === 'deposit' || user?.role === 'admin') && txType !== 'transfer' && (
                                 <div className="mb-4">
-                                    <label className="block text-gray-300 text-sm font-bold mb-2">Sender User Code (Optional)</label>
+                                    <label className="block text-gray-300 text-sm font-bold mb-2">
+                                        {user.role === 'admin' ? 'Sender User Code (Optional)' : 'Transaction Hash / Reference'}
+                                    </label>
                                     <input
                                         type="text"
-                                        placeholder="Leave blank for Admin deposit"
+                                        placeholder={user.role === 'admin' ? "Leave blank for Admin deposit" : "Enter crypto TX hash or reference"}
                                         className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3 focus:outline-none focus:border-purple-500"
                                         value={txSenderCode}
                                         onChange={(e) => setTxSenderCode(e.target.value)}
+                                        required={user.role !== 'admin' && txType === 'deposit'}
                                     />
                                 </div>
                             )}
@@ -753,10 +802,10 @@ const Transactions = () => {
                 <div style={inlineStyles.modalOverlay}>
                     <div style={inlineStyles.modalContent}>
                         <h3 className="text-xl font-bold mb-4 text-white">
-                            {actionType === 'approve' ? 'Approve Withdrawal' : 'Reject Withdrawal'}
+                            {actionType === 'approve' ? `Approve ${actionTx.type}` : `Reject ${actionTx.type}`}
                         </h3>
                         <p className="text-gray-400 text-sm mb-4">
-                            Request from: <span className="text-white font-bold">{actionTx?.usercode}</span> for <span className="text-white font-bold">${parseFloat(actionTx?.amount).toFixed(2)}</span>
+                            Request from: <span className="text-white font-bold">{actionTx?.usercode || actionTx?.from_user}</span> for <span className="text-white font-bold">${parseFloat(actionTx?.amount).toFixed(2)}</span>
                         </p>
                         <form onSubmit={handleAdminAction}>
                             <div className="mb-6">
