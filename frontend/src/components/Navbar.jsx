@@ -10,6 +10,7 @@ const Navbar = ({ toggleSidebar }) => {
   const user = useSelector((state) => state.auth.user)
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [walletTotal, setWalletTotal] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchWalletTotal = async () => {
@@ -51,16 +52,24 @@ const Navbar = ({ toggleSidebar }) => {
             <div className={styles.navHeaderSubtitle}>
               <span>{user?.referral_code || 'N/A'}</span>
               {user?.referral_code && (
-                <svg
-                  className="w-4 h-4 cursor-pointer hover:text-red-400 ml-1"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  onClick={() => navigator.clipboard.writeText(user.referral_code)}
-                  title="Copy Code"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                </svg>
+                <div className="flex items-center gap-1">
+                  <svg
+                    className={`w-4 h-4 cursor-pointer transition-colors ${copied ? 'text-emerald-400' : 'hover:text-red-400'}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    onClick={() => {
+                      const link = `${window.location.origin}/signup?ref=${user.referral_code}`;
+                      navigator.clipboard.writeText(link);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    title="Copy Referral Link"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                  </svg>
+                  {copied && <span className="text-[10px] text-emerald-400 font-bold animate-pulse">Copied!</span>}
+                </div>
               )}
             </div>
           </div>

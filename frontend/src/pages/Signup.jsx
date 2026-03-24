@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from 'react-redux'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { signupUser } from '../features/authSlice'
 import styles from '../styles'
 const Signup = () => {
@@ -8,6 +8,14 @@ const Signup = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [referredByCode, setReferredByCode] = useState('')
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    const ref = searchParams.get('ref')
+    if (ref) {
+      setReferredByCode(ref)
+    }
+  }, [searchParams])
 
   const dispatch = useDispatch()
   const isLoading = useSelector((state) => state.auth.loading)
