@@ -266,10 +266,160 @@ const getMyTransactions = async (req, res, next) => {
     }
 };
 
+// REQUEST WITHDRAWAL (USER)
+const requestWithdrawal = async (req, res, next) => {
+    const { amount, walletType } = req.body;
+    const userId = req.user.id;
+
+    console.log(`[Withdraw Request] User: ${userId}, Amount: ${amount}, Wallet: ${walletType}`);
+
+    try {
+        if (!amount || parseFloat(amount) <= 0 || !walletType) {
+            console.error(`[Withdraw Request Error] Invalid inputs: amount=${amount}, walletType=${walletType}`);
+            throw new Error('Valid amount and wallet type are required');
+        }
+
+        const walletColumnMap = {
+            'ROI': 'roi_wallet_balance',
+            'Level': 'level_wallet_balance',
+            'Direct': 'direct_wallet_balance'
+        };
+
+        const walletColumn = walletColumnMap[walletType];
+        if (!walletColumn) {
+            console.error(`[Withdraw Request Error] Invalid walletType: ${walletType}`);
+            throw new Error('Invalid wallet type');
+        }
+
+        await db.query('BEGIN');
+
+        // Check balance
+        const userRes = await db.query(`SELECT ${walletColumn} FROM "User" WHERE id = $1 FOR UPDATE`, [userId]);
+        if (userRes.rows.length === 0) {
+            console.error(`[Withdraw Request Error] User ${userId} not found`);
+            throw new Error('User not found');
+        }
+        
+        const balance = parseFloat(userRes.rows[0][walletColumn]);
+
+        if (balance < parseFloat(amount)) {
+            console.error(`[Withdraw Request Error] Insufficient balance: ${balance} < ${amount}`);
+            throw new Error(`Insufficient balance in ${walletType} wallet`);
+        }
+
+        // Deduct/Hold funds
+        const numericAmount = parseFloat(amount);
+        await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} - $1 WHERE id = $2`, [numericAmount, userId]);
+
+        // Create pending transaction
+        const result = await db.query(
+            'INSERT INTO "Transaction" (user_id, type, amount, status, description) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [userId, `W/D (${walletType})`, numericAmount, 'pending', `Withdrawal from ${walletType} wallet`]
+        );
+
+        console.log(`[Withdraw Request Success] ID: ${result.rows[0].id}`);
+        await db.query('COMMIT');
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error(`[Withdraw Request Exception] Message: ${error.message}, Stack: ${error.stack}`);
+        res.status(400).json({ message: error.message });
+    }
+};
+
+// GET PENDING WITHDRAWALS (ADMIN)
+const getPendingWithdrawals = async (req, res, next) => {
+    try {
+        const query = `
+            SELECT t.*, u.referral_code, u.name as user_name, u.email
+            FROM "Transaction" t
+            JOIN "User" u ON t.user_id = u.id
+            WHERE t.status = 'pending' AND (t.type ILIKE 'Withdraw Request%' OR t.type ILIKE 'W/D%')
+            ORDER BY t.created_at DESC
+        `;
+        const result = await db.query(query);
+        res.status(200).json(result.rows);
+    } catch (error) {
+        res.status(500);
+        next(error);
+    }
+};
+
+// APPROVE WITHDRAWAL (ADMIN)
+const approveWithdrawal = async (req, res, next) => {
+    const { id } = req.params;
+    const { transactionHash } = req.body;
+
+    try {
+        await db.query('BEGIN');
+
+        const transRes = await db.query('SELECT * FROM "Transaction" WHERE id = $1 AND status = $2 FOR UPDATE', [id, 'pending']);
+        if (transRes.rows.length === 0) throw new Error('Pending transaction not found');
+
+        const trans = transRes.rows[0];
+
+        // Update status to completed
+        await db.query(
+            'UPDATE "Transaction" SET status = $1, type = $2, transaction_hash = $3 WHERE id = $4',
+            ['completed', 'Withdraw Approved', transactionHash || trans.transaction_hash, id]
+        );
+
+        await db.query('COMMIT');
+        res.status(200).json({ message: 'Withdrawal approved successfully' });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        res.status(400);
+        next(error);
+    }
+};
+
+// REJECT WITHDRAWAL (ADMIN)
+const rejectWithdrawal = async (req, res, next) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    try {
+        await db.query('BEGIN');
+
+        const transRes = await db.query('SELECT * FROM "Transaction" WHERE id = $1 AND status = $2 FOR UPDATE', [id, 'pending']);
+        if (transRes.rows.length === 0) throw new Error('Pending transaction not found');
+
+        const trans = transRes.rows[0];
+        
+        // Identify wallet type from transaction type or description
+        let walletColumn = null;
+        if (trans.type.includes('(ROI)')) walletColumn = 'roi_wallet_balance';
+        else if (trans.type.includes('(Level)')) walletColumn = 'level_wallet_balance';
+        else if (trans.type.includes('(Direct)')) walletColumn = 'direct_wallet_balance';
+
+        if (!walletColumn) throw new Error('Could not identify wallet to refund');
+
+        // Refund funds
+        await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} + $1 WHERE id = $2`, [trans.amount, trans.user_id]);
+
+        // Update status to rejected
+        await db.query(
+            'UPDATE "Transaction" SET status = $1, description = $2 WHERE id = $3',
+            ['rejected', `Rejected: ${reason || 'No reason provided'}`, id]
+        );
+
+        await db.query('COMMIT');
+        res.status(200).json({ message: 'Withdrawal rejected and funds refunded' });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        res.status(400);
+        next(error);
+    }
+};
+
 module.exports = {
     createDeposit,
     createWithdraw,
     createTransfer,
     getAdminTransactions,
-    getMyTransactions
+    getMyTransactions,
+    requestWithdrawal,
+    getPendingWithdrawals,
+    approveWithdrawal,
+    rejectWithdrawal
 };

@@ -1,31 +1,43 @@
-import { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useLocation, useNavigate } from 'react-router-dom';
-import API_URL from '../config/api';
-import { getAuthHeaders } from '../services/api';
 import styles from '../styles';
 
-const Transactions = () => {
-    const location = useLocation();
-    const navigate = useNavigate();
-    const { user } = useSelector((state) => state.auth);
-    const [activeTab, setActiveTab] = useState('deposit');
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+        'Authorization': `Bearer ${token}`
+    };
+};
+
+const Transactions = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const user = useSelector((state) => state.auth.user);
+    const [activeTab, setActiveTab] = useState('deposit');
     const [deposits, setDeposits] = useState([]);
     const [withdraws, setWithdraws] = useState([]);
     const [transfers, setTransfers] = useState([]);
-
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isAdminActionModalOpen, setIsAdminActionModalOpen] = useState(false);
+    const [actionTx, setActionTx] = useState(null);
+    const [actionType, setActionType] = useState(null); // 'approve' or 'reject'
+    const [adminInputValue, setAdminInputValue] = useState('');
+    
     const [txType, setTxType] = useState('deposit');
     const [txUserCode, setTxUserCode] = useState('');
     const [txSenderCode, setTxSenderCode] = useState('');
     const [txReceiverCode, setTxReceiverCode] = useState('');
     const [txAmount, setTxAmount] = useState('');
+    const [txWalletType, setTxWalletType] = useState('ROI');
     const [txSubmitting, setTxSubmitting] = useState(false);
+    const [walletBalances, setWalletBalances] = useState({ roiIncome: 0, levelIncome: 0, directIncome: 0 });
 
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -33,6 +45,20 @@ const Transactions = () => {
     const [withdrawCurrentPage, setWithdrawCurrentPage] = useState(1);
     const [transferCurrentPage, setTransferCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
+
+    const fetchWalletBalances = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/dashboard/stats`, {
+                headers: getAuthHeaders(),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setWalletBalances(data.wallet);
+            }
+        } catch (err) {
+            console.error("Failed to fetch wallet balances", err);
+        }
+    };
 
     const fetchTransactions = async () => {
         setLoading(true);
@@ -55,14 +81,12 @@ const Transactions = () => {
             const classifyType = (typeStr) => {
                 const tl = (typeStr || '').toLowerCase();
                 if (tl.includes('deposit') || tl.includes('wallet created')) return 'deposit';
-                if (tl.includes('withdraw')) return 'withdraw';
+                if (tl.includes('withdraw') || tl.includes('w/d')) return 'withdraw';
                 if (tl.includes('roi') || tl.includes('level') || tl.includes('income') ||
                     tl.includes('referral') || tl.includes('direct') || tl.includes('transfer') ||
                     tl.includes('plan_purchase') || tl.includes('bonus')) return 'transfer';
                 return 'transfer'; // catch-all: show in transfers
             };
-
-            console.log(`[Transactions] Total API rows: ${data.length}`);
 
             data.forEach(t => {
                 const typeLower = (t.type || '').toLowerCase();
@@ -100,8 +124,6 @@ const Transactions = () => {
                 }
             });
 
-            console.log(`[Transactions] Classified: ${deps.length} deposits, ${withs.length} withdraws, ${trans.length} transfers`);
-
             setDeposits(deps);
             setWithdraws(withs);
             setTransfers(trans);
@@ -115,6 +137,9 @@ const Transactions = () => {
     useEffect(() => {
         if (user) {
             fetchTransactions();
+            if (user.role !== 'admin') {
+                fetchWalletBalances();
+            }
         } else {
             setLoading(false);
         }
@@ -129,6 +154,42 @@ const Transactions = () => {
         }
     }, [location.search]);
 
+    const handleAdminAction = async (e) => {
+        e.preventDefault();
+        setTxSubmitting(true);
+        try {
+            const endpoint = actionType === 'approve'
+                ? `${API_URL}/api/transactions/admin/approve/${actionTx.id}`
+                : `${API_URL}/api/transactions/admin/reject/${actionTx.id}`;
+            
+            const body = actionType === 'approve'
+                ? { transactionHash: adminInputValue }
+                : { reason: adminInputValue };
+
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    ...getAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body),
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || data.error || 'Action failed');
+
+            setIsAdminActionModalOpen(false);
+            setAdminInputValue('');
+            setActionTx(null);
+            setActionType(null);
+            fetchTransactions();
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setTxSubmitting(false);
+        }
+    };
+
     const handleTabChange = (tab) => {
         setActiveTab(tab);
         navigate(`/transactions?tab=${tab}`, { replace: true });
@@ -138,11 +199,29 @@ const Transactions = () => {
         e.preventDefault();
         setTxSubmitting(true);
         try {
-            const payload = {
-                amount: parseFloat(txAmount)
-            };
+            const amount = parseFloat(txAmount);
+            if (isNaN(amount) || amount <= 0) throw new Error('Please enter a valid amount');
 
-            if (txType === 'transfer') {
+            // For regular users, withdrawals are always requests
+            const isWithdrawRequest = user.role !== 'admin' && txType === 'withdraw';
+            const endpoint = isWithdrawRequest 
+                ? `${API_URL}/api/transactions/withdraw-request`
+                : `${API_URL}/api/transactions/${txType}`;
+
+            const payload = { amount };
+
+            if (isWithdrawRequest) {
+                payload.walletType = txWalletType;
+                
+                // Client side validation for balance
+                const walletColumnMap = {
+                    'ROI': 'roiIncome',
+                    'Level': 'levelIncome',
+                    'Direct Referral': 'directIncome'
+                };
+                const available = walletBalances[walletColumnMap[txWalletType]] || 0;
+                if (amount > available) throw new Error(`Insufficient balance in ${txWalletType} wallet`);
+            } else if (txType === 'transfer') {
                 payload.senderCode = txUserCode.trim();
                 payload.receiverCode = txReceiverCode.trim();
             } else {
@@ -152,21 +231,25 @@ const Transactions = () => {
                 }
             }
 
-            const res = await fetch(`${API_URL}/api/transactions/${txType}`, {
+            const res = await fetch(endpoint, {
                 method: 'POST',
-                headers: getAuthHeaders(),
+                headers: {
+                    ...getAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(payload),
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Transaction failed');
+            if (!res.ok) throw new Error(data.message || data.error || 'Transaction failed');
 
             setIsModalOpen(false);
             setTxAmount('');
             setTxUserCode('');
             setTxSenderCode('');
             setTxReceiverCode('');
-            fetchTransactions(); // Refresh
+            fetchTransactions(); // Refresh list
+            if (user.role !== 'admin') fetchWalletBalances(); // Refresh balances
         } catch (err) {
             alert(err.message);
         } finally {
@@ -246,6 +329,8 @@ const Transactions = () => {
     if (loading) return <div className={styles.transactionContainer}><h2 className="text-white">Loading...</h2></div>;
     if (error) return <div className={styles.transactionContainer}><h2 className="text-red-500">{error}</h2></div>;
 
+    const isWithdrawRequestModal = user?.role !== 'admin' && txType === 'withdraw';
+
     return (
         <div className={styles.transactionContainer}>
             <div className={styles.transactionHeader}>
@@ -289,12 +374,18 @@ const Transactions = () => {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {user && user.role === 'admin' && (
+                    {user && (user.role === 'admin' || activeTab === 'withdraw') && (
                         <button
                             className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
-                            onClick={() => { setTxType(activeTab); setIsModalOpen(true); }}
+                            onClick={() => { 
+                                setTxType(activeTab); 
+                                if (user.role !== 'admin' && activeTab === 'withdraw') {
+                                    fetchWalletBalances();
+                                }
+                                setIsModalOpen(true); 
+                            }}
                         >
-                            + New {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+                            {user.role === 'admin' ? `+ New ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}` : 'Withdraw Funds'}
                         </button>
                     )}
                 </div>
@@ -364,10 +455,7 @@ const Transactions = () => {
                                             </span>
                                         </td>
                                         <td className={styles.transactionTd}>
-                                            {new Date(item.created_at).toLocaleString('en-GB', {
-                                                day: '2-digit', month: '2-digit', year: 'numeric',
-                                                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-                                            })}
+                                            {formatDate(item.created_at)}
                                         </td>
                                         <td className={styles.transactionActionCell}>
                                             <button className={styles.transactionActionButton}>
@@ -388,30 +476,48 @@ const Transactions = () => {
                                             </span>
                                         </td>
                                         <td className={styles.transactionTd}>
-                                            <span className={styles.transactionAmount}>
-                                                ${parseFloat(item.amount).toLocaleString()}
+                                            <span className={`${styles.transactionAmount} text-red-400`}>
+                                                -${parseFloat(item.amount).toLocaleString()}
                                             </span>
                                         </td>
                                         <td className={styles.transactionTd}>
                                             <span className={styles.transactionHash}>{item.transaction_hash}</span>
                                         </td>
                                         <td className={styles.transactionTd}>
-                                            <span className={styles.transactionStatus}>
+                                            <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                                                item.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
+                                                item.status === 'pending' ? 'bg-amber-500/10 text-amber-400' :
+                                                'bg-red-500/10 text-red-400'
+                                            }`}>
                                                 {item.status}
                                             </span>
                                         </td>
                                         <td className={styles.transactionTd}>
-                                            {new Date(item.created_at).toLocaleString('en-GB', {
-                                                day: '2-digit', month: '2-digit', year: 'numeric',
-                                                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-                                            })}
+                                            {formatDate(item.created_at)}
                                         </td>
                                         <td className={styles.transactionActionCell}>
-                                            <button className={styles.transactionActionButton}>
-                                                <svg className={styles.transactionActionIcon} fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
-                                                </svg>
-                                            </button>
+                                            {user?.role === 'admin' && item.status === 'pending' ? (
+                                                <div className="flex gap-2">
+                                                    <button 
+                                                        onClick={() => { setActionTx(item); setActionType('approve'); setIsAdminActionModalOpen(true); }}
+                                                        className="px-2 py-1 bg-emerald-600 text-white text-[10px] uppercase font-bold rounded hover:bg-emerald-500 transition shadow-sm"
+                                                    >
+                                                        Approve
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => { setActionTx(item); setActionType('reject'); setIsAdminActionModalOpen(true); }}
+                                                        className="px-2 py-1 bg-red-600 text-white text-[10px] uppercase font-bold rounded hover:bg-red-500 transition shadow-sm"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button className={styles.transactionActionButton}>
+                                                    <svg className={styles.transactionActionIcon} fill="currentColor" viewBox="0 0 20 20">
+                                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                                    </svg>
+                                                </button>
+                                            )}
                                         </td>
                                     </>
                                 )}
@@ -427,10 +533,7 @@ const Transactions = () => {
                                             </span>
                                         </td>
                                         <td className={styles.transactionTd}>
-                                            {new Date(item.created_at).toLocaleString('en-GB', {
-                                                day: '2-digit', month: '2-digit', year: 'numeric',
-                                                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-                                            })}
+                                            {formatDate(item.created_at)}
                                         </td>
                                     </>
                                 )}
@@ -526,33 +629,54 @@ const Transactions = () => {
             {isModalOpen && (
                 <div style={inlineStyles.modalOverlay}>
                     <div style={inlineStyles.modalContent}>
-                        <h3 className="text-xl font-bold mb-4 text-white">Create Manual {txType.charAt(0).toUpperCase() + txType.slice(1)}</h3>
+                        <h3 className="text-xl font-bold mb-4 text-white">
+                            {isWithdrawRequestModal ? 'Withdraw Funds' : `Create Manual ${txType.charAt(0).toUpperCase() + txType.slice(1)}`}
+                        </h3>
                         <form onSubmit={handleTxSubmit}>
-                            <div className="mb-4">
-                                <label className="block text-gray-300 text-sm font-bold mb-2">Transaction Type</label>
-                                <select
-                                    className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3"
-                                    value={txType}
-                                    onChange={(e) => setTxType(e.target.value)}
-                                >
-                                    <option value="deposit">Deposit</option>
-                                    <option value="withdraw">Withdraw</option>
-                                    <option value="transfer">Transfer</option>
-                                </select>
-                            </div>
+                            {user.role === 'admin' && (
+                                <div className="mb-4">
+                                    <label className="block text-gray-300 text-sm font-bold mb-2">Transaction Type</label>
+                                    <select
+                                        className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3"
+                                        value={txType}
+                                        onChange={(e) => setTxType(e.target.value)}
+                                    >
+                                        <option value="deposit">Deposit</option>
+                                        <option value="withdraw">Withdraw</option>
+                                        <option value="transfer">Transfer</option>
+                                    </select>
+                                </div>
+                            )}
 
-                            <div className="mb-4">
-                                <label className="block text-gray-300 text-sm font-bold mb-2">
-                                    {txType === 'transfer' ? 'Sender User Code' : txType === 'deposit' ? 'Receiver User Code' : 'User Code'}
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3 focus:outline-none focus:border-purple-500"
-                                    value={txUserCode}
-                                    onChange={(e) => setTxUserCode(e.target.value)}
-                                />
-                            </div>
+                            {isWithdrawRequestModal && (
+                                <div className="mb-4">
+                                    <label className="block text-gray-300 text-sm font-bold mb-2">Wallet Type</label>
+                                    <select
+                                        className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3"
+                                        value={txWalletType}
+                                        onChange={(e) => setTxWalletType(e.target.value)}
+                                    >
+                                        <option value="ROI">ROI Wallet (${walletBalances.roiIncome.toFixed(2)})</option>
+                                        <option value="Level">Level Wallet (${walletBalances.levelIncome.toFixed(2)})</option>
+                                        <option value="Direct Referral">Direct Referral Wallet (${walletBalances.directIncome.toFixed(2)})</option>
+                                    </select>
+                                </div>
+                            )}
+
+                            {user.role === 'admin' && (
+                                <div className="mb-4">
+                                    <label className="block text-gray-300 text-sm font-bold mb-2">
+                                        {txType === 'transfer' ? 'Sender User Code' : txType === 'deposit' ? 'Receiver User Code' : 'User Code'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3 focus:outline-none focus:border-purple-500"
+                                        value={txUserCode}
+                                        onChange={(e) => setTxUserCode(e.target.value)}
+                                    />
+                                </div>
+                            )}
 
                             {txType === 'deposit' && user?.role === 'admin' && (
                                 <div className="mb-4">
@@ -567,7 +691,7 @@ const Transactions = () => {
                                 </div>
                             )}
 
-                            {txType === 'transfer' && (
+                            {txType === 'transfer' && user?.role === 'admin' && (
                                 <div className="mb-4">
                                     <label className="block text-gray-300 text-sm font-bold mb-2">Receiver User Code</label>
                                     <input
@@ -591,6 +715,15 @@ const Transactions = () => {
                                     value={txAmount}
                                     onChange={(e) => setTxAmount(e.target.value)}
                                 />
+                                {isWithdrawRequestModal && (
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Max: ${
+                                            txWalletType === 'ROI' ? walletBalances.roiIncome :
+                                            txWalletType === 'Level' ? walletBalances.levelIncome :
+                                            walletBalances.directIncome
+                                        }
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex justify-end space-x-3">
@@ -614,8 +747,62 @@ const Transactions = () => {
                     </div>
                 </div>
             )}
+
+            {/* Admin Action Modal (Approve/Reject) */}
+            {isAdminActionModalOpen && (
+                <div style={inlineStyles.modalOverlay}>
+                    <div style={inlineStyles.modalContent}>
+                        <h3 className="text-xl font-bold mb-4 text-white">
+                            {actionType === 'approve' ? 'Approve Withdrawal' : 'Reject Withdrawal'}
+                        </h3>
+                        <p className="text-gray-400 text-sm mb-4">
+                            Request from: <span className="text-white font-bold">{actionTx?.usercode}</span> for <span className="text-white font-bold">${parseFloat(actionTx?.amount).toFixed(2)}</span>
+                        </p>
+                        <form onSubmit={handleAdminAction}>
+                            <div className="mb-6">
+                                <label className="block text-gray-300 text-sm font-bold mb-2">
+                                    {actionType === 'approve' ? 'Transaction Hash (Optional)' : 'Reason for Rejection'}
+                                </label>
+                                <textarea
+                                    className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3 focus:outline-none focus:border-purple-500 h-24 resize-none"
+                                    value={adminInputValue}
+                                    onChange={(e) => setAdminInputValue(e.target.value)}
+                                    placeholder={actionType === 'approve' ? 'Enter crypto tx hash...' : 'Enter rejection reason...'}
+                                    required={actionType === 'reject'}
+                                />
+                            </div>
+                            <div className="flex justify-end space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsAdminActionModalOpen(false); setActionTx(null); }}
+                                    disabled={txSubmitting}
+                                    className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={txSubmitting}
+                                    className={`px-4 py-2 text-white rounded transition ${
+                                        actionType === 'approve' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'
+                                    }`}
+                                >
+                                    {txSubmitting ? 'Processing...' : actionType === 'approve' ? 'Approve' : 'Reject'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
+};
+
+const formatDate = (dateStr) => {
+    return new Date(dateStr).toLocaleString('en-GB', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    });
 };
 
 const inlineStyles = {

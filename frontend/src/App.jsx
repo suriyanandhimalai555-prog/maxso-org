@@ -19,6 +19,8 @@ import Portfolio from './pages/Portfolio'
 import MyNetwork from './pages/MyNetwork'
 import MyReferrals from './pages/MyReferrals'
 import LevelEarnings from './pages/LevelEarnings'
+
+import AdminWithdrawals from './pages/AdminWithdrawals'
 function App() {
   const dispatch = useDispatch();
   const { user, isAuthReady } = useSelector((state) => state.auth);
@@ -78,6 +80,8 @@ function App() {
                 <Route path="/networking/my-referrals" element={<MyReferrals />} />
                 <Route path="/networking/level-earnings" element={<LevelEarnings />} />
                 <Route path="/transactions" element={<Transactions />} />
+
+                <Route path="/admin/withdrawals" element={user.role === 'admin' ? <AdminWithdrawals /> : <Navigate to="/" />} />
                 <Route path="/level-config" element={<LevelConfig />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<Navigate to="/" />} />
