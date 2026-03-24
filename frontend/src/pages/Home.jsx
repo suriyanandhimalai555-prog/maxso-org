@@ -215,7 +215,7 @@ const Home = () => {
               <span className={styles.dashWalletLabel}>Referral Income</span>
               <ChartUpIcon />
             </div>
-            <span className={styles.dashWalletValue}>${isLoading ? '...' : earnings.referralIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+            <span className={styles.dashWalletValue}>${isLoading ? '...' : (earnings.referralIncome || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
           </div>
         </div>
       </div>

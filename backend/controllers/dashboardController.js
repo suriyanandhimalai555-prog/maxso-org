@@ -127,10 +127,11 @@ const getDashboardStats = async (req, res, next) => {
             `, [userId]);
             earningsRes.rows.forEach(row => {
                 const t = row.type.toLowerCase();
-                if (t === 'level 1 income' || (t.includes('direct') && t.includes('income')) || t.includes('referral bonus')) {
-                    stats.earnings.referralIncome += parseFloat(row.total);
-                } else if (t.includes('level') && t.includes('income') && t !== 'level_income_bonus') {
-                    stats.earnings.levelIncome += parseFloat(row.total);
+                // Both direct/referral and standard level income now go to levelIncome for consistency
+                if (t === 'level 1 income' || t.includes('direct') || t.includes('referral') || t.includes('level')) {
+                    if (!t.includes('roi')) {
+                        stats.earnings.levelIncome += parseFloat(row.total);
+                    }
                 } else if (t.includes('roi income') || t === 'roi_income') {
                     stats.earnings.roiIncome += parseFloat(row.total);
                 }

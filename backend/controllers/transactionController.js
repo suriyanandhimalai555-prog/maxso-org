@@ -60,11 +60,11 @@ const createDeposit = async (req, res, next) => {
                 const commAmount = Math.round(((parseFloat(amount) * parseFloat(comm.percentage)) / 100) * 10000) / 10000;
 
                 if (commAmount > 0) {
-                    // Determine transaction type (direct is level 1, level_income is > 1)
+                    // Level 1 (Direct) and beyond all go to level_wallet_balance for consistency
                     const incomeType = parseInt(comm.level) === 1 ? 'direct_income' : 'level_income';
-                    const walletColumn = parseInt(comm.level) === 1 ? 'direct_wallet_balance' : 'level_wallet_balance';
+                    const walletColumn = 'level_wallet_balance';
 
-                    // Update the referrer's specific wallet
+                    // Update the referrer's specific wallet (all levels go to level_wallet_balance)
                     await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} + $1 WHERE id = $2`, [commAmount, comm.referrer_id]);
 
                     // Create income transaction log for the referrer

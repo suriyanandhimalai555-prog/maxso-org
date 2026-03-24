@@ -489,11 +489,13 @@ const getLevelEarnings = async (req, res, next) => {
     if (userRes.rows.length === 0) throw new Error('User not found');
     const myCode = userRes.rows[0].referral_code;
 
-    // 1. Fetch all users and their total active/completed deposits
+    // 1. Fetch all users and their total active/completed deposits (from March onwards)
     const userDepositsRes = await db.query(`
       SELECT u.id, u.referral_code, u.name, COALESCE(SUM(up.amount), 0) as total_deposit
       FROM "User" u
-      LEFT JOIN "UserPlan" up ON u.id = up.user_id AND up.status IN ('active', 'completed')
+      LEFT JOIN "UserPlan" up ON u.id = up.user_id 
+        AND up.status IN ('active', 'completed')
+        AND up.end_date >= '2026-03-01'
       GROUP BY u.id, u.referral_code, u.name
     `);
     const usersMap = {}; // referral_code -> { id, name, deposit }
