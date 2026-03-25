@@ -187,24 +187,43 @@ const buyPlan = async (req, res, next) => {
 
         // 7. Referral Bonus distribution (Direct Referrer Only)
         if (userCode && parseFloat(plan.referral_bonus) > 0) {
-            // Find direct referrer
+            // Find direct referrer and their required volume for Level 1
             const refQuery = `
-                SELECT u.id as referrer_id
+                SELECT u.id as referrer_id, u.referral_code, c.required_volume
                 FROM "Referral" r
                 JOIN "User" u ON r.referrer_code = u.referral_code
-                WHERE r.referred_code = $1 AND r.level = 1;
+                JOIN "LevelConfig" c ON r.level = c.level
+                WHERE r.referred_code = $1 AND r.level = 1 AND c.status = 'active';
             `;
             const refRes = await db.query(refQuery, [userCode]);
 
             if (refRes.rows.length > 0) {
                 const referrerId = refRes.rows[0].referrer_id;
-                const bonusAmount = Math.round(((parseFloat(amount) * parseFloat(plan.referral_bonus)) / 100) * 10000) / 10000;
+                const referrerCode = refRes.rows[0].referral_code;
+                const requiredVolume = parseFloat(refRes.rows[0].required_volume);
 
-                await db.query('UPDATE "User" SET direct_wallet_balance = direct_wallet_balance + $1 WHERE id = $2', [bonusAmount, referrerId]);
-                await db.query(
-                    'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
-                    [referrerId, 'Direct Referral Income', bonusAmount, 'completed', userId]
-                );
+                // Check if referrer meets the required volume at Level 1 (Plan Volume Only)
+                const volumeRes = await db.query(`
+                    SELECT COALESCE(SUM(up.amount), 0) as total_volume
+                    FROM "Referral" r
+                    JOIN "User" u ON r.referred_code = u.referral_code
+                    JOIN "UserPlan" up ON u.id = up.user_id
+                    WHERE r.referrer_code = $1 
+                      AND r.level = 1
+                      AND up.status = 'active'
+                `, [referrerCode]);
+
+                const totalLevelVolume = parseFloat(volumeRes.rows[0].total_volume);
+
+                if (totalLevelVolume >= requiredVolume) {
+                    const bonusAmount = Math.round(((parseFloat(amount) * parseFloat(plan.referral_bonus)) / 100) * 10000) / 10000;
+
+                    await db.query('UPDATE "User" SET direct_wallet_balance = direct_wallet_balance + $1 WHERE id = $2', [bonusAmount, referrerId]);
+                    await db.query(
+                        'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
+                        [referrerId, 'Direct Referral Income', bonusAmount, 'completed', userId]
+                    );
+                }
             }
         }
 

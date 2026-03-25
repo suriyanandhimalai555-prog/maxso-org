@@ -472,6 +472,7 @@ const approveDeposit = async (req, res, next) => {
                 r.referrer_code, 
                 r.level, 
                 c.percentage,
+                c.required_volume,
                 u.id as referrer_id
             FROM "Referral" r
             JOIN "LevelConfig" c ON r.level = c.level
@@ -481,6 +482,22 @@ const approveDeposit = async (req, res, next) => {
         const commRes = await db.query(configQuery, [userCode]);
 
         for (const comm of commRes.rows) {
+            // Check if referrer meets the required volume at this level (Plan Volume Only)
+            const volumeRes = await db.query(`
+                SELECT COALESCE(SUM(up.amount), 0) as total_volume
+                FROM "Referral" r
+                JOIN "User" u ON r.referred_code = u.referral_code
+                JOIN "UserPlan" up ON u.id = up.user_id
+                WHERE r.referrer_code = $1 
+                  AND r.level = $2
+                  AND up.status = 'active'
+            `, [comm.referrer_code, comm.level]);
+
+            const totalLevelVolume = parseFloat(volumeRes.rows[0].total_volume);
+            if (totalLevelVolume < parseFloat(comm.required_volume)) {
+                continue;
+            }
+
             const commAmount = Math.round(((parseFloat(amount) * parseFloat(comm.percentage)) / 100) * 10000) / 10000;
             if (commAmount > 0) {
                 const incomeType = parseInt(comm.level) === 1 ? 'direct_income' : 'level_income';

@@ -54,7 +54,9 @@ const signupUser = async (req, res, next) => {
       // 2. Traverse up and create referral records
       let currentLevel = 1;
       let currentReferrerCode = actualReferrerCode;
-      const maxLevels = 10;
+
+      const maxLevelRes = await client.query('SELECT MAX(level) as max_level FROM "LevelConfig" WHERE status = $1', ['active']);
+      const maxLevels = parseInt(maxLevelRes.rows[0].max_level) || 0;
 
       while (currentReferrerCode && currentLevel <= maxLevels) {
         if (currentLevel === 1) {
@@ -591,9 +593,13 @@ const getLevelEarnings = async (req, res, next) => {
       return business;
     };
 
-    // 5. Build the breakdown for Level 1 to 8
+    // 5. Build the breakdown based on active LevelConfig levels
+    const maxLevel = Object.keys(levelPercentages).length > 0 
+        ? Math.max(...Object.keys(levelPercentages).map(Number)) 
+        : 0;
+
     const breakdown = {};
-    for (let i = 1; i <= 8; i++) {
+    for (let i = 1; i <= maxLevel; i++) {
         breakdown[i] = {
             members: [],
             subtotals: { deposit: 0, business: 0, earnings: 0 }
@@ -601,7 +607,7 @@ const getLevelEarnings = async (req, res, next) => {
     }
 
     const traverse = (refCode, currentLevel) => {
-      if (currentLevel > 8) return;
+      if (currentLevel > maxLevel) return;
 
       const children = childrenMap[refCode] || [];
       for (const childCode of children) {

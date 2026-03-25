@@ -48,6 +48,7 @@ const processMonthlyLevelIncome = async () => {
                     r.referrer_code, 
                     r.level, 
                     c.percentage, 
+                    c.required_volume,
                     u.id as upline_id
                 FROM "Referral" r
                 JOIN "LevelConfig" c ON r.level = c.level
@@ -60,6 +61,22 @@ const processMonthlyLevelIncome = async () => {
             const uplinesRes = await db.query(uplinesQuery, [investorCode]);
 
             for (let upline of uplinesRes.rows) {
+                // Check if referrer meets the required volume at this level
+                const volumeRes = await db.query(`
+                    SELECT COALESCE(SUM(up.amount), 0) as total_volume
+                    FROM "Referral" r
+                    JOIN "User" u ON r.referred_code = u.referral_code
+                    JOIN "UserPlan" up ON u.id = up.user_id
+                    WHERE r.referrer_code = $1 
+                      AND r.level = $2
+                      AND up.status = 'active'
+                `, [upline.referrer_code, upline.level]);
+
+                const totalLevelVolume = parseFloat(volumeRes.rows[0].total_volume);
+                if (totalLevelVolume < parseFloat(upline.required_volume)) {
+                    // console.log(`[Monthly Level Job] Referrer ${upline.referrer_code} level ${upline.level} volume ${totalLevelVolume} < ${upline.required_volume}. Skipping.`);
+                    continue;
+                }
 
                 // Get upline active plans
                 const uplinePlansRes = await db.query(`
