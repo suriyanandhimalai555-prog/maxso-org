@@ -365,16 +365,6 @@ const UserManagement = () => {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    className={`w-full text-left ${styles.umDropdownItemDelete}`}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDelete(u.id);
-                                                    }}
-                                                >
-                                                    Delete
-                                                </button>
-                                                <button
-                                                    type="button"
                                                     className={`w-full text-left ${styles.umDropdownItemLogin}`}
                                                     onClick={(e) => {
                                                         e.stopPropagation();

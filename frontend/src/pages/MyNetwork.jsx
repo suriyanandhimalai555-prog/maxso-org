@@ -93,6 +93,8 @@ const TreeNode = ({ node, isRoot = false }) => {
                     style={{
                         ...ns.treeNode,
                         ...(isRoot ? ns.treeNodeRoot : {}),
+                        ...(!node.status ? ns.treeNodeInactive : {}),
+                        ...(isRoot && !node.status ? ns.treeNodeRootInactive : {}),
                         cursor: hasChildren ? 'pointer' : 'default'
                     }}
                 >

@@ -46,8 +46,8 @@ const signupUser = async (req, res, next) => {
 
       // 1. Insert the new user first
       const result = await client.query(
-        'INSERT INTO "User" (name, email, password, referral_code, referred_by, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, role',
-        [name, email, hash, referral_code, referred_by_id, 'user']
+        'INSERT INTO "User" (name, email, password, referral_code, referred_by, role, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, role',
+        [name, email, hash, referral_code, referred_by_id, 'user', false]
       );
       const user = result.rows[0];
 
@@ -90,8 +90,8 @@ const signupUser = async (req, res, next) => {
     } else {
       // No referral code provided, just create the user
       const result = await client.query(
-        'INSERT INTO "User" (name, email, password, referral_code, referred_by, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, role',
-        [name, email, hash, referral_code, null, 'user']
+        'INSERT INTO "User" (name, email, password, referral_code, referred_by, role, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, role',
+        [name, email, hash, referral_code, null, 'user', false]
       );
       const user = result.rows[0];
       await client.query('COMMIT');
@@ -473,14 +473,15 @@ const getMyReferrals = async (req, res, next) => {
 // @route   GET /api/user/my-network
 const getMyNetwork = async (req, res, next) => {
   try {
-    const userRes = await db.query('SELECT referral_code, name FROM "User" WHERE id = $1', [req.user.id]);
+    const userRes = await db.query('SELECT referral_code, name, status FROM "User" WHERE id = $1', [req.user.id]);
     if (userRes.rows.length === 0) throw new Error('User not found');
     const myCode = userRes.rows[0].referral_code;
     const myName = userRes.rows[0].name;
+    const myStatus = userRes.rows[0].status;
 
     // Fetch ONLY explicit direct (Level 1) links across the entire database to build a strict tree.
     const allLinksRes = await db.query(`
-      SELECT r.referrer_code, r.referred_code, r.created_at, u.name as referred_name
+      SELECT r.referrer_code, r.referred_code, r.created_at, u.name as referred_name, u.status as referred_status
       FROM "Referral" r
       JOIN "User" u ON r.referred_code = u.referral_code
       WHERE r.level = 1
@@ -495,27 +496,29 @@ const getMyNetwork = async (req, res, next) => {
       }
       childrenMap[row.referrer_code].push({
         name: row.referred_name,
-        referralCode: row.referred_code
+        referralCode: row.referred_code,
+        status: row.referred_status
       });
     }
 
     // Recursive pure function to build exactly the downline starting from any node (no depth limit)
-    const buildTreeMem = (referralCode, userName) => {
+    const buildTreeMem = (referralCode, userName, status) => {
       const node = {
         name: userName,
         referralCode: referralCode,
+        status: status,
         children: []
       };
 
       const directChildren = childrenMap[referralCode] || [];
       for (const child of directChildren) {
-        node.children.push(buildTreeMem(child.referralCode, child.name));
+        node.children.push(buildTreeMem(child.referralCode, child.name, child.status));
       }
 
       return node;
     };
 
-    const tree = buildTreeMem(myCode, myName);
+    const tree = buildTreeMem(myCode, myName, myStatus);
 
     res.status(200).json(tree);
   } catch (error) {

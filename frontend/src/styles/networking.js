@@ -85,6 +85,13 @@ const networkingStyles = {
         padding: '12px 24px',
         fontSize: '14px',
     },
+    treeNodeInactive: {
+        background: '#dc2626',
+        boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)',
+    },
+    treeNodeRootInactive: {
+        boxShadow: '0 4px 20px rgba(220, 38, 38, 0.5)',
+    },
     treeNodeCode: {
         fontFamily: 'monospace',
         letterSpacing: '0.5px',
