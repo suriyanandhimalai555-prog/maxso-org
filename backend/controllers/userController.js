@@ -14,7 +14,7 @@ const generateReferralCode = () => 'MAX' + crypto.randomBytes(4).toString('hex')
 const signupUser = async (req, res, next) => {
   const { name, email, password } = req.body;
   let { referred_by_code } = req.body;
-  
+
   const client = await db.pool.connect();
 
   try {
@@ -36,11 +36,11 @@ const signupUser = async (req, res, next) => {
     if (referred_by_code) {
       referred_by_code = referred_by_code.trim().toUpperCase();
       const referrerRes = await client.query('SELECT id, referral_code FROM "User" WHERE UPPER(TRIM(referral_code)) = $1', [referred_by_code]);
-      
+
       if (referrerRes.rows.length === 0) {
         throw Error('Invalid referral code');
       }
-      
+
       referred_by_id = referrerRes.rows[0].id;
       const actualReferrerCode = referrerRes.rows[0].referral_code;
 
@@ -97,7 +97,7 @@ const signupUser = async (req, res, next) => {
       );
       const user = result.rows[0];
       await client.query('COMMIT');
-      
+
       const token = createToken(user.id);
       res.status(200).json({
         token, email, name, role: user.role, referral_code,
@@ -566,11 +566,26 @@ const getLevelEarnings = async (req, res, next) => {
       childrenMap[row.referrer_code].push(row.referred_code);
     });
 
-    // 3. Fetch LevelConfig to calculate expected monthly earnings based on current deposit percentage
+    // 3. Fetch actual Level Income transactions for this user since March 1
+    const userTransactionsRes = await db.query(`
+      SELECT reference_user_id, SUM(amount) as total_earned
+      FROM "Transaction"
+      WHERE user_id = $1
+        AND created_at >= '2026-03-01'
+        AND (type ILIKE 'Level % Income' OR type = 'direct_income' OR type = 'level_income')
+        AND status = 'completed'
+      GROUP BY reference_user_id
+    `, [userId]);
+    const userEarningsMap = {};
+    userTransactionsRes.rows.forEach(row => {
+      userEarningsMap[row.reference_user_id] = parseFloat(row.total_earned);
+    });
+
+    // 4. Fetch LevelConfig to calculate expected monthly earnings based on current deposit percentage
     const levelConfigRes = await db.query('SELECT level, percentage FROM "LevelConfig" WHERE status = $1', ['active']);
     const levelPercentages = {};
     levelConfigRes.rows.forEach(row => {
-        levelPercentages[row.level] = parseFloat(row.percentage);
+      levelPercentages[row.level] = parseFloat(row.percentage);
     });
 
     // 4. Helper to calculate total business recursively (cached)
@@ -579,31 +594,31 @@ const getLevelEarnings = async (req, res, next) => {
     const calculateBusiness = (refCode, visited = new Set()) => {
       if (visited.has(refCode)) return 0; // Prevent circularity
       if (businessCache[refCode] !== undefined) return businessCache[refCode];
-      
+
       visited.add(refCode);
       const user = usersMap[refCode];
       let business = user ? user.deposit : 0;
-      
+
       const children = childrenMap[refCode] || [];
       for (const childCode of children) {
         business += calculateBusiness(childCode, visited);
       }
-      
+
       businessCache[refCode] = Math.round(business * 100) / 100;
       return business;
     };
 
     // 5. Build the breakdown based on active LevelConfig levels
-    const maxLevel = Object.keys(levelPercentages).length > 0 
-        ? Math.max(...Object.keys(levelPercentages).map(Number)) 
-        : 0;
+    const maxLevel = Object.keys(levelPercentages).length > 0
+      ? Math.max(...Object.keys(levelPercentages).map(Number))
+      : 0;
 
     const breakdown = {};
     for (let i = 1; i <= maxLevel; i++) {
-        breakdown[i] = {
-            members: [],
-            subtotals: { deposit: 0, business: 0, earnings: 0 }
-        };
+      breakdown[i] = {
+        members: [],
+        subtotals: { deposit: 0, business: 0, earnings: 0 }
+      };
     }
 
     const traverse = (refCode, currentLevel) => {
@@ -614,15 +629,14 @@ const getLevelEarnings = async (req, res, next) => {
         const userData = usersMap[childCode];
         if (userData) {
           const business = calculateBusiness(childCode);
-          const levelPercentage = levelPercentages[currentLevel] || 0;
-          const expectedMonthlyEarning = (userData.deposit * levelPercentage) / 100;
-          
+          const actualEarning = userEarningsMap[userData.id] || 0;
+
           const member = {
             name: userData.name,
             referralCode: childCode,
             deposit: Math.round(userData.deposit * 100) / 100,
             business: Math.round(business * 100) / 100,
-            earnings: Math.round(expectedMonthlyEarning * 100) / 100
+            earnings: Math.round(actualEarning * 100) / 100
           };
 
           breakdown[currentLevel].members.push(member);
