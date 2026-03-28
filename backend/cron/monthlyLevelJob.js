@@ -14,7 +14,9 @@ const processMonthlyLevelIncome = async () => {
                 up.user_id, 
                 up.amount, 
                 up.start_date,
-                p.roi
+                p.roi,
+                p.referral_bonus,
+                DATE_PART('day', NOW() - up.start_date)::integer as days_active
             FROM "UserPlan" up
             JOIN "Plan" p ON up.plan_id = p.id
             WHERE up.status = 'active' 
@@ -77,6 +79,19 @@ const processMonthlyLevelIncome = async () => {
                     // console.log(`[Monthly Level Job] Referrer ${upline.referrer_code} level ${upline.level} volume ${totalLevelVolume} < ${upline.required_volume}. Skipping.`);
                     continue;
                 }
+
+                // --- DIRECT REFERRAL BONUS (One-time at exactly 30 days) ---
+                if (upline.level === 1 && plan.days_active === 30 && parseFloat(plan.referral_bonus) > 0) {
+                    const bonusAmount = Math.round(((parseFloat(plan.amount) * parseFloat(plan.referral_bonus)) / 100) * 10000) / 10000;
+                    if (bonusAmount > 0) {
+                        await db.query('UPDATE "User" SET direct_wallet_balance = direct_wallet_balance + $1 WHERE id = $2', [bonusAmount, upline.upline_id]);
+                        await db.query(
+                            'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id, description) VALUES ($1, $2, $3, $4, $5, $6)',
+                            [upline.upline_id, 'Direct Referral Income', bonusAmount, 'completed', plan.user_id, `Monthly Direct Bonus for UserPlan ID: ${plan.user_plan_id}`]
+                        );
+                    }
+                }
+                // --- END DIRECT REFERRAL BONUS ---
 
                 // Get upline active plans
                 const uplinePlansRes = await db.query(`
@@ -193,7 +208,8 @@ const processMonthlyLevelIncome = async () => {
 module.exports = {
     processMonthlyLevelIncome,
     start: () => {
-        cron.schedule('55 18 * * *', processMonthlyLevelIncome);
+        // Run every day at 11:55 PM IST (18:25 UTC)
+        cron.schedule('25 18 * * *', processMonthlyLevelIncome);
         console.log('Monthly Level Cron Job initialized.');
     }
 };

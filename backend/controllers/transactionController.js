@@ -38,44 +38,48 @@ const createDeposit = async (req, res, next) => {
             [userId, 'Deposit', amount, 'completed', depositRefUser]
         );
 
-        // --- LEVEL COMMISSION DISTRIBUTION ---
-        // Only run level commissions for non-admins, OR for admins who explicitly provide a senderCode
-        if (shouldProcessCommissions) {
-            // 1. Fetch the user's upline referrers and their active LevelConfig rules
-            const configQuery = `
-                SELECT 
-                    r.referrer_code, 
-                    r.level, 
-                    c.percentage,
-                    u.id as referrer_id
-                FROM "Referral" r
-                JOIN "LevelConfig" c ON r.level = c.level
-                JOIN "User" u ON r.referrer_code = u.referral_code
-                WHERE r.referred_code = $1 AND c.status = 'active';
-            `;
-            const commRes = await db.query(configQuery, [userCode]);
-
-            // 2. Distribute commissions
-            for (const comm of commRes.rows) {
-                const commAmount = Math.round(((parseFloat(amount) * parseFloat(comm.percentage)) / 100) * 10000) / 10000;
-
-                if (commAmount > 0) {
-                    // Level 1 (Direct) and beyond all go to level_wallet_balance for consistency
-                    const incomeType = parseInt(comm.level) === 1 ? 'direct_income' : 'level_income';
-                    const walletColumn = 'level_wallet_balance';
-
-                    // Update the referrer's specific wallet (all levels go to level_wallet_balance)
-                    await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} + $1 WHERE id = $2`, [commAmount, comm.referrer_id]);
-
-                    // Create income transaction log for the referrer
-                    await db.query(
-                        'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
-                        [comm.referrer_id, incomeType, commAmount, 'completed', userId]
-                    );
-                }
-            }
+        // --- AUTOMATIC PLAN PURCHASE (Plan ID 1) ---
+        const planRes = await db.query('SELECT * FROM "Plan" WHERE id = 1');
+        if (planRes.rows.length === 0) {
+            throw new Error('Default Plan (ID 1) not found');
         }
-        // --- END LEVEL COMMISSION ---
+        const plan = planRes.rows[0];
+
+        if (plan.status !== 'active') throw new Error('Default plan is not currently active');
+
+        if (parseFloat(amount) < parseFloat(plan.min_deposit)) {
+            throw new Error(`Minimum deposit is $${plan.min_deposit}`);
+        }
+        if (parseFloat(amount) > parseFloat(plan.max_deposit)) {
+            throw new Error(`Maximum deposit is $${plan.max_deposit}`);
+        }
+
+        // Deduct from wallet immediately to lock in plan
+        await db.query('UPDATE "User" SET wallet_balance = wallet_balance - $1 WHERE id = $2', [amount, userId]);
+
+        const now = new Date();
+        let endDate;
+        if (plan.duration_unit === 'days') {
+            endDate = new Date(now.getTime() + plan.duration * 24 * 60 * 60 * 1000);
+        } else {
+            endDate = new Date(now.getTime() + (plan.duration * 30) * 24 * 60 * 60 * 1000);
+        }
+
+        await db.query(
+            `INSERT INTO "UserPlan" (user_id, plan_id, amount, deposit_type, status, start_date, end_date)
+             VALUES ($1, $2, $3, $4, 'active', NOW(), $5)`,
+            [userId, 1, amount, 'trust_wallet', endDate]
+        );
+
+        // Log plan purchase
+        await db.query(
+            'INSERT INTO "Transaction" (user_id, type, amount, status) VALUES ($1, $2, $3, $4)',
+            [userId, 'plan_purchase', amount, 'completed']
+        );
+
+        // --- IMMEDIATE DIRECT REFERRAL BONUS ---
+        // Removed as per user request to be distributed after a month
+        // --- END DIRECT BONUS ---
 
         await db.query('COMMIT');
         res.status(201).json(result.rows[0]);
@@ -462,55 +466,48 @@ const approveDeposit = async (req, res, next) => {
             ['completed', 'Deposit', id]
         );
 
-        // 4. --- LEVEL COMMISSION DISTRIBUTION ---
-        // Fetch user code to find referrers
-        const userRes = await db.query('SELECT referral_code FROM "User" WHERE id = $1', [userId]);
-        const userCode = userRes.rows[0].referral_code;
-
-        const configQuery = `
-            SELECT 
-                r.referrer_code, 
-                r.level, 
-                c.percentage,
-                c.required_volume,
-                u.id as referrer_id
-            FROM "Referral" r
-            JOIN "LevelConfig" c ON r.level = c.level
-            JOIN "User" u ON r.referrer_code = u.referral_code
-            WHERE r.referred_code = $1 AND c.status = 'active';
-        `;
-        const commRes = await db.query(configQuery, [userCode]);
-
-        for (const comm of commRes.rows) {
-            // Check if referrer meets the required volume at this level (Plan Volume Only)
-            const volumeRes = await db.query(`
-                SELECT COALESCE(SUM(up.amount), 0) as total_volume
-                FROM "Referral" r
-                JOIN "User" u ON r.referred_code = u.referral_code
-                JOIN "UserPlan" up ON u.id = up.user_id
-                WHERE r.referrer_code = $1 
-                  AND r.level = $2
-                  AND up.status = 'active'
-            `, [comm.referrer_code, comm.level]);
-
-            const totalLevelVolume = parseFloat(volumeRes.rows[0].total_volume);
-            if (totalLevelVolume < parseFloat(comm.required_volume)) {
-                continue;
-            }
-
-            const commAmount = Math.round(((parseFloat(amount) * parseFloat(comm.percentage)) / 100) * 10000) / 10000;
-            if (commAmount > 0) {
-                const incomeType = parseInt(comm.level) === 1 ? 'direct_income' : 'level_income';
-                const walletColumn = 'level_wallet_balance';
-
-                await db.query(`UPDATE "User" SET ${walletColumn} = ${walletColumn} + $1 WHERE id = $2`, [commAmount, comm.referrer_id]);
-                await db.query(
-                    'INSERT INTO "Transaction" (user_id, type, amount, status, reference_user_id) VALUES ($1, $2, $3, $4, $5)',
-                    [comm.referrer_id, incomeType, commAmount, 'completed', userId]
-                );
-            }
+        // 4. --- AUTOMATIC PLAN PURCHASE (Plan ID 1) ---
+        const planRes = await db.query('SELECT * FROM "Plan" WHERE id = 1');
+        if (planRes.rows.length === 0) {
+            throw new Error('Default Plan (ID 1) not found');
         }
-        // --- END COMMISSION ---
+        const plan = planRes.rows[0];
+
+        if (plan.status !== 'active') throw new Error('Default plan is not currently active');
+
+        if (parseFloat(amount) < parseFloat(plan.min_deposit)) {
+            throw new Error(`Minimum deposit is $${plan.min_deposit}`);
+        }
+        if (parseFloat(amount) > parseFloat(plan.max_deposit)) {
+            throw new Error(`Maximum deposit is $${plan.max_deposit}`);
+        }
+
+        // Deduct from wallet immediately to lock in plan
+        await db.query('UPDATE "User" SET wallet_balance = wallet_balance - $1 WHERE id = $2', [amount, userId]);
+
+        const now = new Date();
+        let endDate;
+        if (plan.duration_unit === 'days') {
+            endDate = new Date(now.getTime() + plan.duration * 24 * 60 * 60 * 1000);
+        } else {
+            endDate = new Date(now.getTime() + (plan.duration * 30) * 24 * 60 * 60 * 1000);
+        }
+
+        await db.query(
+            `INSERT INTO "UserPlan" (user_id, plan_id, amount, deposit_type, status, start_date, end_date)
+             VALUES ($1, $2, $3, $4, 'active', NOW(), $5)`,
+            [userId, 1, amount, 'trust_wallet', endDate]
+        );
+
+        // Log plan purchase
+        await db.query(
+            'INSERT INTO "Transaction" (user_id, type, amount, status) VALUES ($1, $2, $3, $4)',
+            [userId, 'plan_purchase', amount, 'completed']
+        );
+
+        // --- IMMEDIATE DIRECT REFERRAL BONUS ---
+        // Removed as per user request to be distributed after a month
+        // --- END DIRECT BONUS ---
 
         await db.query('COMMIT');
         res.status(200).json({ message: 'Deposit approved and credited' });
