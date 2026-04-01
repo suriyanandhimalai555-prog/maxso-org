@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const db = require('../db');
 
+const round2 = (n) => Math.round(n * 100) / 100;
 const round4 = (n) => Math.round(n * 10000) / 10000;
 
 const processDailyROI = async () => {
@@ -30,7 +31,17 @@ const processDailyROI = async () => {
         `;
         const activePlans = await db.query(plansQuery);
 
+        // Determine days in current month to handle 30 vs 31 day rates
         const now = new Date();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        
+        let dailyRate = 0.00333333; // Default 0.333333% for 30 days
+        if (daysInMonth === 31) {
+            dailyRate = 0.003226; // 0.3226% for 31 days
+        } else if (daysInMonth < 30) {
+            dailyRate = 0.10 / daysInMonth; // Handle Feb flexibly to hit ~10%
+        }
+
         let processedCount = 0;
 
         for (let plan of activePlans.rows) {
@@ -41,8 +52,8 @@ const processDailyROI = async () => {
                 continue;
             }
 
-            // Calculate daily ROI — 10% of investment distributed daily (over a 30-day month)
-            const dailyRoi = round4((parseFloat(plan.amount) * 0.10) / 30);
+            // Calculate daily ROI based on month duration
+            const dailyRoi = parseFloat(plan.amount) * dailyRate;
 
             // Calculate max earnings
             let limitMultiplier = parseFloat(plan.ceiling_limit);
@@ -89,7 +100,7 @@ const processDailyROI = async () => {
 
             processedCount++;
 
-            // Check if capped after this credit
+            // Check if capped after this credit (using 0.0001 precision for 4-decimal accuracy)
             if (remainingCap - creditAmount <= 0.0001) {
                 await db.query('UPDATE "UserPlan" SET status = $1 WHERE id = $2', ['completed', plan.user_plan_id]);
             }
