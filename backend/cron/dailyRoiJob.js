@@ -41,8 +41,8 @@ const processDailyROI = async () => {
                 continue;
             }
 
-            // Calculate daily ROI — flat 0.33% of plan amount
-            const dailyRoi = round4(parseFloat(plan.amount) * 0.0033);
+            // Calculate daily ROI — 10% of investment distributed daily (over a 30-day month)
+            const dailyRoi = round4((parseFloat(plan.amount) * 0.10) / 30);
 
             // Calculate max earnings
             let limitMultiplier = parseFloat(plan.ceiling_limit);
