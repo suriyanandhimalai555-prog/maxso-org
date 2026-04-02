@@ -544,7 +544,7 @@ const getLevelEarnings = async (req, res, next) => {
       FROM "User" u
       LEFT JOIN "UserPlan" up ON u.id = up.user_id 
         AND up.status IN ('active', 'completed')
-        AND up.end_date >= '2026-03-01'
+        AND up.end_date >= DATE_TRUNC('month', CURRENT_DATE)
       GROUP BY u.id, u.referral_code, u.name
     `);
     const usersMap = {}; // referral_code -> { id, name, deposit }
@@ -566,12 +566,12 @@ const getLevelEarnings = async (req, res, next) => {
       childrenMap[row.referrer_code].push(row.referred_code);
     });
 
-    // 3. Fetch actual Level Income transactions for this user since March 1
+    // 3. Fetch actual Level Income transactions for this user since that month
     const userTransactionsRes = await db.query(`
       SELECT reference_user_id, SUM(amount) as total_earned
       FROM "Transaction"
       WHERE user_id = $1
-        AND created_at >= '2026-03-01'
+        AND created_at >= DATE_TRUNC('month', CURRENT_DATE)
         AND (type ILIKE 'Level % Income' OR type = 'direct_income' OR type = 'level_income')
         AND status = 'completed'
       GROUP BY reference_user_id
