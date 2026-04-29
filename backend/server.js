@@ -46,6 +46,7 @@ app.use(errorHandler);
 // Initialize Background Jobs
 require('./cron/dailyRoiJob').start();
 require('./cron/monthlyLevelJob').start();
+require('./cron/monthlyWalletResetJob').start();
 
 // listen for requests
 app.listen(process.env.PORT, () => {
